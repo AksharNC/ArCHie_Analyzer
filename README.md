@@ -1,4 +1,4 @@
-# 🛡️ ArCHie Analyzer
+# !! ArCHie Analyzer
 
 **Threat Intel CLI for SOC / VAPT / phishing triage.**  
 Paste any IOC → auto-detect type → fan out to up to 5 sources simultaneously → get a verdict table + final verdict panel.
@@ -7,7 +7,7 @@ Runs requests through an embedded Java proxy (Netskope bypass) — the tool star
 
 ---
 
-## 📄 Changelog
+## !! Changelog
 
 ### v3.0 — Interactive Menu + Flexible Logging
 - **Interactive menu**: running `python analyzer.py` now shows a numbered action menu instead of a raw paste prompt
@@ -36,7 +36,7 @@ Runs requests through an embedded Java proxy (Netskope bypass) — the tool star
 
 ---
 
-## ⚡ Quick Start
+## !! Quick Start
 
 ```bash
 # 1. Install dependencies
@@ -61,7 +61,7 @@ python analyzer.py -f iocs.txt --log-summary --no-proxy # combine flags freely
 
 ---
 
-## 🔍 Supported IOC Types
+## !! Supported IOC Types
 
 | Type | Example | Handled As |
 |---|---|---|
@@ -75,7 +75,7 @@ python analyzer.py -f iocs.txt --log-summary --no-proxy # combine flags freely
 
 ---
 
-## 🌐 API Sources
+## !! API Sources
 
 | Source | Covers | Key Required |
 |---|---|---|
@@ -96,7 +96,7 @@ Missing keys show `~ NO KEY` in the table — the tool never crashes on missing 
 
 ---
 
-## 🖥️ Sample Output
+## !! Sample Output
 
 ```
   IOC  » 45.33.32.156
@@ -122,7 +122,7 @@ Missing keys show `~ NO KEY` in the table — the tool never crashes on missing 
 
 ---
 
-## 📁 Project Structure
+## !! Project Structure
 
 ```
 ArCHie_Analyzer/
@@ -153,7 +153,7 @@ ArCHie_Analyzer/
 
 ---
 
-## 📄 Run Logs
+## !! Run Logs
 
 Logging is **opt-in** — no log is written unless you request one.
 
@@ -211,7 +211,7 @@ Summary log example (same structure, `raw_response` omitted from every source):
 
 ---
 
-## ✅ What's Working
+## !! What's Working
 
 - 9 ASCII banners load randomly on startup
 - **Interactive menu** on launch — numbered options for single IOC, bulk file, or exit
@@ -227,7 +227,7 @@ Summary log example (same structure, `raw_response` omitted from every source):
 
 ---
 
-## 🚧 Pending / Roadmap
+## !! Pending / Roadmap
 
 | Feature | Notes |
 |---|---|
@@ -238,7 +238,7 @@ Summary log example (same structure, `raw_response` omitted from every source):
 
 ---
 
-## 🔑 API Keys Setup
+## !! API Keys Setup
 
 ```bash
 copy .env.example .env
