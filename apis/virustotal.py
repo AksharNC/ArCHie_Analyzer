@@ -7,32 +7,25 @@ Sign up: https://www.virustotal.com/gui/join-us
 """
 
 import base64
-import os
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE = "https://www.virustotal.com/api/v3"
-SOURCE = "VirusTotal"
-
-
-def _key():
-    return os.getenv("VT_API_KEY", "").strip()
+_BASE   = "https://www.virustotal.com/api/v3"
+SOURCE  = "VirusTotal"
+_client = ThreatIntelClient(timeout=15)
+_pool   = KeyPool("VT_API_KEY")   # loads VT_API_KEY, VT_API_KEY_2, _3 ...
 
 
 def _no_key():
     return {"source": SOURCE, "verdict": "skipped", "data": {}, "raw_response": None, "error": "No API key"}
 
 
-def _headers():
-    return {"x-apikey": _key()}
-
-
 def _get(endpoint: str, proxies: dict):
-    resp = requests.get(
+    resp = _client.get(
         f"{_BASE}{endpoint}",
-        headers=_headers(),
+        key_pool=_pool,
+        key_header="x-apikey",
         proxies=proxies,
-        verify=False,
-        timeout=15,
     )
     resp.raise_for_status()
     return resp.json()
@@ -50,7 +43,7 @@ def _stats_verdict(stats: dict) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def analyze_hash(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         data  = _get(f"/files/{value}", proxies)
@@ -82,7 +75,7 @@ def analyze_hash(value: str, proxies: dict) -> dict:
 
 
 def analyze_ip(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         ip    = value.split("/")[0]  # strip CIDR
@@ -108,7 +101,7 @@ def analyze_ip(value: str, proxies: dict) -> dict:
 
 
 def analyze_domain(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         data  = _get(f"/domains/{value}", proxies)
@@ -133,7 +126,7 @@ def analyze_domain(value: str, proxies: dict) -> dict:
 
 
 def analyze_url(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         # VT URL lookup: URL-safe base64 of the raw URL, no padding

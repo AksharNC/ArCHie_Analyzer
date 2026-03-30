@@ -6,32 +6,25 @@ Free tier: generous rate limits.
 Sign up: https://otx.alienvault.com/api
 """
 
-import os
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE  = "https://otx.alienvault.com/api/v1"
-SOURCE = "OTX AlienVault"
-
-
-def _key():
-    return os.getenv("OTX_KEY", "").strip()
+_BASE   = "https://otx.alienvault.com/api/v1"
+SOURCE  = "OTX AlienVault"
+_client = ThreatIntelClient(timeout=12)
+_pool   = KeyPool("OTX_KEY")   # loads OTX_KEY, OTX_KEY_2, _3 ...
 
 
 def _no_key():
     return {"source": SOURCE, "verdict": "skipped", "data": {}, "raw_response": None, "error": "No API key"}
 
 
-def _headers():
-    return {"X-OTX-API-KEY": _key()}
-
-
 def _get(endpoint: str, proxies: dict):
-    resp = requests.get(
+    resp = _client.get(
         f"{_BASE}{endpoint}",
-        headers=_headers(),
+        key_pool=_pool,
+        key_header="X-OTX-API-KEY",
         proxies=proxies,
-        verify=False,
-        timeout=12,
     )
     resp.raise_for_status()
     return resp.json()
@@ -74,9 +67,9 @@ def _url_verdict(pulse_count: int) -> str:
 
 def _extract_families(pulses: list) -> str:
     """
-    Safely extract malware family names from pulse list.
-    OTX returns malware_families as a list of dicts: {"id": ..., "display_name": ...}
-    Iterating directly over them and calling set() causes 'unhashable type: dict'.
+    Safely extract malware family names from the pulse list.
+    Each pulse's malware_families field is a list of dicts with 'id' and 'display_name' keys.
+    Families are deduplicated and capped at 4 to prevent table overflow.
     """
     families = set()
     for p in pulses:
@@ -101,7 +94,7 @@ def _extract_families(pulses: list) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def analyze_hash(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         length     = len(value)
@@ -125,7 +118,7 @@ def analyze_hash(value: str, proxies: dict) -> dict:
 
 
 def analyze_ip(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         ip         = value.split("/")[0]
@@ -148,7 +141,7 @@ def analyze_ip(value: str, proxies: dict) -> dict:
 
 
 def analyze_domain(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         data       = _get(f"/indicators/domain/{value}/general", proxies)
@@ -168,7 +161,7 @@ def analyze_domain(value: str, proxies: dict) -> dict:
 
 
 def analyze_url(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         import urllib.parse

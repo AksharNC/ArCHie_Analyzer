@@ -7,16 +7,14 @@ Sign up: https://www.phishtank.com/developer_info.php
 Env var: PHISHTANK_KEY
 """
 
-import os
 import urllib.parse
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE  = "https://checkurl.phishtank.com/checkurl/"
-SOURCE = "PhishTank"
-
-
-def _key():
-    return os.getenv("PHISHTANK_KEY", "").strip()
+_BASE   = "https://checkurl.phishtank.com/checkurl/"
+SOURCE  = "PhishTank"
+_client = ThreatIntelClient(timeout=15)
+_pool   = KeyPool("PHISHTANK_KEY")   # loads PHISHTANK_KEY, PHISHTANK_KEY_2, _3 ...
 
 
 def _no_key():
@@ -24,20 +22,20 @@ def _no_key():
 
 
 def analyze_url(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
-        resp = requests.post(
+        # PhishTank key is in POST body, not headers — use _pool.current() directly.
+        # Key rotation on 429 is handled by ThreatIntelClient backoff.
+        resp = _client.post(
             _BASE,
             data={
                 "url":     urllib.parse.quote(value, safe=""),
                 "format":  "json",
-                "app_key": _key(),
+                "app_key": _pool.current(),
             },
             headers={"User-Agent": "phishtank/ArCHie-Analyzer"},
             proxies=proxies,
-            verify=False,
-            timeout=15,
         )
         resp.raise_for_status()
         body    = resp.json()

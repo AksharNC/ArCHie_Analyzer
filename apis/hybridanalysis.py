@@ -7,15 +7,13 @@ Sign up: https://www.hybrid-analysis.com/signup
 Env var: HYBRID_ANALYSIS_KEY
 """
 
-import os
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE  = "https://www.hybrid-analysis.com/api/v2"
-SOURCE = "Hybrid Analysis"
-
-
-def _key():
-    return os.getenv("HYBRID_ANALYSIS_KEY", "").strip()
+_BASE   = "https://www.hybrid-analysis.com/api/v2"
+SOURCE  = "Hybrid Analysis"
+_client = ThreatIntelClient(timeout=20)
+_pool   = KeyPool("HYBRID_ANALYSIS_KEY")   # loads HYBRID_ANALYSIS_KEY, HYBRID_ANALYSIS_KEY_2, _3 ...
 
 
 def _no_key():
@@ -23,20 +21,20 @@ def _no_key():
 
 
 def analyze_hash(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
-        resp = requests.post(
-            f"{_BASE}/search/hash",
+        # POST /search/hashes — see Hybrid Analysis v2 API docs
+        resp = _client.post(
+            f"{_BASE}/search/hashes",
+            key_pool=_pool,
+            key_header="api-key",
             headers={
-                "api-key":    _key(),
-                "user-agent": "Falcon Sandbox",
+                "user-agent":   "Falcon Sandbox",
                 "Content-Type": "application/x-www-form-urlencoded",
             },
             data={"hash": value},
             proxies=proxies,
-            verify=False,
-            timeout=15,
         )
         resp.raise_for_status()
         results = resp.json()

@@ -6,16 +6,14 @@ Free tier: generous quota.
 Sign up: https://urlscan.io/user/signup
 """
 
-import os
 import time
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE  = "https://urlscan.io/api/v1"
-SOURCE = "URLScan.io"
-
-
-def _key():
-    return os.getenv("URLSCAN_KEY", "").strip()
+_BASE   = "https://urlscan.io/api/v1"
+SOURCE  = "URLScan.io"
+_client = ThreatIntelClient(timeout=12)
+_pool   = KeyPool("URLSCAN_KEY")   # loads URLSCAN_KEY, URLSCAN_KEY_2, _3 ...
 
 
 def _no_key():
@@ -24,16 +22,13 @@ def _no_key():
 
 def _scan(value: str, proxies: dict) -> dict:
     """Submit a URL/domain for scanning and poll for result."""
-    resp = requests.post(
+    resp = _client.post(
         f"{_BASE}/scan/",
-        headers={
-            "API-Key":      _key(),
-            "Content-Type": "application/json",
-        },
+        key_pool=_pool,
+        key_header="API-Key",
+        headers={"Content-Type": "application/json"},
         json={"url": value, "visibility": "public"},
         proxies=proxies,
-        verify=False,
-        timeout=12,
     )
     resp.raise_for_status()
     return resp.json()
@@ -44,11 +39,9 @@ def _poll_result(uuid: str, proxies: dict, retries: int = 8, delay: float = 3.0)
     for _ in range(retries):
         time.sleep(delay)
         try:
-            resp = requests.get(
+            resp = _client.get(
                 f"{_BASE}/result/{uuid}/",
                 proxies=proxies,
-                verify=False,
-                timeout=12,
             )
             if resp.status_code == 200:
                 return resp.json()
@@ -71,7 +64,7 @@ def _get_verdict(verdicts: dict) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def analyze_url(value: str, proxies: dict) -> dict:
-    if not _key():
+    if not _pool:
         return _no_key()
     try:
         scan     = _scan(value, proxies)

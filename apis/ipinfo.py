@@ -6,22 +6,23 @@ No API key needed for basic geo (org, city, country).
 Optional key for higher rate limits: https://ipinfo.io/signup
 """
 
-import os
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-SOURCE = "IPInfo"
+SOURCE  = "IPInfo"
+_client = ThreatIntelClient(timeout=8)
+_pool   = KeyPool("IPINFO_KEY")   # optional; loads IPINFO_KEY, IPINFO_KEY_2, _3 ...
 
 
 def analyze_ip(value: str, proxies: dict) -> dict:
     try:
         ip    = value.split("/")[0]   # strip CIDR
-        key   = os.getenv("IPINFO_KEY", "").strip()
+        # IPInfo key goes in URL as ?token=; key_pool/key_header not applicable.
+        key   = _pool.current()
         token = f"?token={key}" if key else ""
-        resp  = requests.get(
+        resp  = _client.get(
             f"https://ipinfo.io/{ip}/json{token}",
             proxies=proxies,
-            verify=False,
-            timeout=8,
         )
         resp.raise_for_status()
         d    = resp.json()

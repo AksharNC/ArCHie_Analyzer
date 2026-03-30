@@ -25,35 +25,35 @@ class IOC:
 _PATTERNS = [
     # Hashes — most specific first (longest match)
     ("sha256",   re.compile(r"^[a-fA-F0-9]{64}$"),
-                 "SHA-256 Hash", "🔐"),
+                 "SHA-256 Hash", ""),
     ("sha1",     re.compile(r"^[a-fA-F0-9]{40}$"),
-                 "SHA-1 Hash",   "🔐"),
+                 "SHA-1 Hash",   ""),
     ("md5",      re.compile(r"^[a-fA-F0-9]{32}$"),
-                 "MD5 Hash",     "🔐"),
+                 "MD5 Hash",     ""),
 
     # CVE — must come before domain (CVE-2024-1234 could loosely match domain)
     ("cve",      re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE),
-                 "CVE ID",       "🐛"),
+                 "CVE ID",       ""),
 
     # URL — must come before domain (full URL contains domain)
     ("url",      re.compile(r"^https?://[^\s]+", re.IGNORECASE),
-                 "URL",          "🔗"),
+                 "URL",          ""),
 
     # Email — must come before domain (email contains domain part)
     ("email",    re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"),
-                 "Email Address","📧"),
+                 "Email Address",""),
 
     # IPv4 (with optional CIDR)
     ("ipv4",     re.compile(r"^(\d{1,3}\.){3}\d{1,3}(/\d{1,2})?$"),
-                 "IPv4 Address", "🌐"),
+                 "IPv4 Address", ""),
 
     # Domain — loose check, must have dot and valid TLD
     ("domain",   re.compile(r"^([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}$"),
-                 "Domain",       "🏠"),
+                 "Domain",       ""),
 
     # File paths: Windows (C:\), Unix (/), home (~), env (%TEMP%)
     ("filepath", re.compile(r"^([A-Za-z]:\\|/|~/|%[A-Z_]+%)"),
-                 "File Path",    "📁"),
+                 "File Path",    ""),
 ]
 
 
@@ -65,7 +65,7 @@ def detect_single(raw: str) -> IOC:
     for ioc_type, pattern, label, emoji in _PATTERNS:
         if pattern.search(value):
             return IOC(value=value, ioc_type=ioc_type, display_label=label, emoji=emoji)
-    return IOC(value=value, ioc_type="unknown", display_label="Unknown", emoji="❓")
+    return IOC(value=value, ioc_type="unknown", display_label="Unknown", emoji="")
 
 
 def detect_bulk(raw_input: str) -> List[IOC]:

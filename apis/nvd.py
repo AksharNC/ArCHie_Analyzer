@@ -7,15 +7,19 @@ Optional env var: NVD_API_KEY (raises limit to 50 req/30s)
 API: https://nvd.nist.gov/developers/vulnerabilities
 """
 
-import os
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE  = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-SOURCE = "NVD"
+_BASE   = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+SOURCE  = "NVD"
+_client = ThreatIntelClient(timeout=20)
+_pool   = KeyPool("NVD_API_KEY")   # optional; loads NVD_API_KEY, NVD_API_KEY_2, _3 ...
 
 
 def _headers() -> dict:
-    key = os.getenv("NVD_API_KEY", "").strip()
+    # NVD key goes in header; key_pool/key_header not used because the key is
+    # optional and there are no _no_key() guards in this module.
+    key = _pool.current()
     if key:
         return {"apiKey": key}
     return {}
@@ -23,13 +27,11 @@ def _headers() -> dict:
 
 def analyze_cve(value: str, proxies: dict) -> dict:
     try:
-        resp = requests.get(
+        resp = _client.get(
             _BASE,
             params={"cveId": value.upper()},
             headers=_headers(),
             proxies=proxies,
-            verify=False,
-            timeout=20,
         )
         resp.raise_for_status()
         data  = resp.json()

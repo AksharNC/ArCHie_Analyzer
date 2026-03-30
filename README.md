@@ -1,42 +1,16 @@
-# 🛡️ ArCHie Analyzer
+# ArCHie Analyzer
 
-**Threat Intel CLI for SOC / VAPT / phishing triage.**  
-Paste any IOC → auto-detect type → fan out to up to 5 sources simultaneously → get a verdict table + final verdict panel.
+Threat Intel CLI for SOC / VAPT / phishing triage.
+Paste any IOC to auto-detect its type, query up to 11 sources concurrently, and get a verdict table.
 
-Runs requests through an embedded Java proxy (Netskope bypass) — the tool starts and stops it automatically. Can be skipped via `--no-proxy`.
+Includes an embedded Java proxy that routes requests through a local tunnel, useful for working around
+network-level URL restrictions in corporate or managed environments. May not work in all cases -- skip with `--no-proxy`.
 
----
-
-## 📄 Changelog
-
-### v3.0 — Interactive Menu + Flexible Logging
-- **Interactive menu**: running `python analyzer.py` now shows a numbered action menu instead of a raw paste prompt
-- **Help flag**: `python analyzer.py -h` prints all CLI flags and usage examples
-- **Optional logging** with two distinct modes:
-  - `--log-raw` / menu option — full dump including every raw API response
-  - `--log-summary` / menu option — parsed fields + verdict only (no raw responses)
-  - Default (no flag) — no log file written
-- `--log-raw` and `--log-summary` are mutually exclusive CLI flags
-- Interactive menu loops so the user can run multiple analyses in one session
-
-### v2.0 — Advanced Build
-- Added 11 API sources dispatched concurrently per IOC type (VirusTotal, AbuseIPDB, GreyNoise, OTX, IPInfo, URLScan, MalwareBazaar, Hybrid Analysis, PhishTank, crt.sh, NVD)
-- Bulk IOC analysis from file (`-f / --file`)
-- Rich TUI: coloured verdict tables, verdict panel, bulk summary table, 9 random ASCII banners
-- Embedded Java proxy for Netskope bypass with `--no-proxy` override
-- JSON run log saved after every execution (full raw API dump)
-- Auto-detect IOC type: MD5/SHA1/SHA256, IPv4/CIDR, domain, URL, email, file path, CVE
-- Email → domain extraction + re-dispatch; file path → local-only risk analysis
-
-### v1.0 — Primary Build
-- Single IOC analysis via `-i` flag
-- VirusTotal hash + IP + domain + URL lookups
-- Basic tabular output with verdict
-- `.env`-based API key management
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
 # 1. Install dependencies
@@ -46,162 +20,167 @@ pip install -r requirements.txt
 copy .env.example .env
 # open .env and fill in your keys
 
-# 3. Run
-python analyzer.py                                      # interactive menu
-python analyzer.py -h                                   # show all CLI flags
-python analyzer.py -i "45.33.32.156"                    # single IOC
-python analyzer.py -f tests/sample_iocs.txt             # bulk from file
-python analyzer.py --no-proxy                           # skip proxy (direct connection)
-python analyzer.py -i "1.2.3.4" --log-raw               # single IOC + save full raw log
-python analyzer.py -i "1.2.3.4" --log-summary           # single IOC + save summary log
-python analyzer.py -f iocs.txt --log-summary --no-proxy # combine flags freely
+# 3. (One-time) Add project folder to PATH so you can run 'archie' from anywhere
+setx PATH "%PATH%;C:\Automations Stuff\ArCHie_Analyzer"
+# Open a new terminal after this step
+
+# 4. Run
+archie                              # interactive menu
+archie -h                           # all CLI flags
+archie -i "45.33.32.156"            # single IOC (quiet)
+archie -i "45.33.32.156" -v         # single IOC verbose
+archie -f tests/sample_iocs.txt     # bulk from file
+archie -f tests/sample_iocs.txt -v  # bulk verbose
+archie -i "1.2.3.4" -np             # skip proxy
+archie -i "1.2.3.4" -nc             # bypass cache
+archie -f iocs.txt -o csv           # export CSV to output/logs/csv/
+archie -f iocs.txt -o json          # export JSON to output/logs/json/
+archie -i "1.2.3.4" -lr             # full raw-dump log
+archie -i "1.2.3.4" -ls             # summary-only log
+archie -f iocs.txt -w 10 -np        # 10 workers, no proxy
 ```
 
-> **Java required** for the proxy. If `java` is not on PATH the tool runs without it and warns you.
+> Java is required for the proxy. If `java` is not on PATH, the tool warns and runs without it.
 
 ---
 
-## 🔍 Supported IOC Types
+## CLI Flags
 
-| Type | Example | Handled As |
+```
+-i,  --ioc         Single IOC to analyze
+-f,  --file        Path to a file with one IOC per line
+-v,  --verbose     Show per-API results as they arrive (default: quiet summary)
+-np, --no-proxy    Skip the Java proxy (use direct connection)
+-nc, --no-cache    Bypass the 24 h result cache
+-w,  --workers     Thread pool size for concurrent API calls (default: 5)
+-o,  --output      Export format: csv or json
+-lr, --log-raw     Save full raw API dump to output/logs/json/
+-ls, --log-summary Save summary log (parsed fields only) to output/logs/json/
+```
+
+---
+
+## Supported IOC Types
+
+| Type | Example | Notes |
 |---|---|---|
 | MD5 / SHA1 / SHA256 | `44d88612fea8a8f36de82e1278abb02f` | Hash lookup |
 | IPv4 (+ CIDR) | `45.33.32.156`, `10.0.0.0/8` | IP reputation |
 | Domain | `evil.ru` | Domain intel + cert recon |
 | URL | `https://phish.evil.ru/login` | URL scan + phish check |
-| Email | `attacker@phish.ru` | Domain extracted → domain analysis |
-| File Path | `C:\Temp\payload.exe` | Local extension + path risk check |
+| Email | `attacker@phish.ru` | Domain extracted and re-dispatched |
+| File Path | `C:\Temp\payload.exe` | Extension + path risk check |
 | CVE | `CVE-2024-12345` | NVD CVSS lookup |
 
 ---
 
-## 🌐 API Sources
+## API Sources
 
 | Source | Covers | Key Required |
 |---|---|---|
-| VirusTotal | Hash, IP, Domain, URL | ✅ |
-| AbuseIPDB | IP | ✅ |
-| OTX AlienVault | Hash, IP, Domain, URL | ✅ |
-| GreyNoise | IP | ✅ |
-| URLScan.io | Domain, URL | ✅ |
-| MalwareBazaar | Hash | ✅ (free account) |
-| Hybrid Analysis | Hash | ✅ (free account) |
-| PhishTank | URL | ✅ (free account) |
-| IPInfo | IP | ❌ (basic geo free) |
-| crt.sh | Domain | ❌ (public CT log) |
-| NVD | CVE | ❌ (optional key for higher rate) |
+| VirusTotal | Hash, IP, Domain, URL | Yes |
+| AbuseIPDB | IP | Yes |
+| OTX AlienVault | Hash, IP, Domain, URL | Yes |
+| GreyNoise | IP | Yes |
+| URLScan.io | Domain, URL | Yes |
+| MalwareBazaar | Hash | Yes (free account) |
+| Hybrid Analysis | Hash | Yes (free account) |
+| PhishTank | URL | Yes (free account) |
+| IPInfo | IP | No (basic geo is free) |
+| crt.sh | Domain | No (public CT logs) |
+| NVD | CVE | No (optional key for higher rate limit) |
 
-Sign-up links for all keys are in `.env.example`.  
-Missing keys show `~ NO KEY` in the table — the tool never crashes on missing keys.
-
----
-
-## 🖥️ Sample Output
-
-```
-  IOC  » 45.33.32.156
-  TYPE » 🌐 IPv4 Address
-
- ┌──────────────────┬───────────────┬─────────────────────────────────┐
- │ SOURCE           │ VERDICT       │ KEY FINDINGS                    │
- ├──────────────────┼───────────────┼─────────────────────────────────┤
- │ VirusTotal       │ 🔴 MALICIOUS  │ 14/94 | United States | AS63949 │
- │ AbuseIPDB        │ 🔴 MALICIOUS  │ 87%   | 234 reports | Linode    │
- │ GreyNoise        │ 🔴 MALICIOUS  │ malicious | scanner             │
- │ OTX AlienVault   │ 🟡 SUSPICIOUS │ 3 threat pulses                 │
- │ IPInfo           │ ℹ️  INFO       │ AS63949 Linode | US             │
- └──────────────────┴───────────────┴─────────────────────────────────┘
-
- ╭─ VERDICT ──────────────────────────────────────────────────────────╮
- │ 🔴 MALICIOUS   (3 of 4 sources agree)                             │
- │ Flagged : VirusTotal, AbuseIPDB, GreyNoise                        │
- ╰────────────────────────────────────────────────────────────────────╯
-
-  Run log → output/logs/run_20260320_222739.json
-```
+Sign-up links for all keys are in `.env.example`.
+Missing keys show `~ NO KEY` in the verdict table -- the tool never crashes on missing keys.
 
 ---
 
-## 📁 Project Structure
+## Sample Output
+
+```
+  IOC  >> 45.33.32.156
+  TYPE >> IPv4 Address
+
+ +------------------+----------------+---------------------------------------------+
+ | SOURCE           | VERDICT        | KEY FINDINGS                                |
+ +------------------+----------------+---------------------------------------------+
+ | VirusTotal       | [!] MALICIOUS  | 14/94 security vendors flagged this IP ...  |
+ | AbuseIPDB        | [!] MALICIOUS  | 87% | 234 reports | Linode                  |
+ | GreyNoise        | [!] MALICIOUS  | malicious | scanner                         |
+ | OTX AlienVault   | [~] SUSPICIOUS | 3 threat pulses                             |
+ | IPInfo           | [i] INFO       | AS63949 Linode | US                          |
+ +------------------+----------------+---------------------------------------------+
+
+ // VERDICT
+ [!] MALICIOUS   (3 of 4 sources agree)
+   Flagged  : VirusTotal, AbuseIPDB, GreyNoise
+
+  Run log -> output/logs/json/run_20260320_222739.json
+```
+
+---
+
+## Project Structure
 
 ```
 ArCHie_Analyzer/
-├── analyzer.py           ← CLI entry point, IOC dispatch, bulk/single mode, JSON log
-├── detector.py           ← IOC auto-detection (sha256/sha1/md5/cve/url/email/ipv4/domain/filepath)
-├── proxy_manager.py      ← Java proxy lifecycle (compile + start + auto-stop on exit)
-├── SimpleProxy.java      ← Optimized HTTPS tunnel on port 8888
-├── apis/
-│   ├── virustotal.py     ← Hash / IP / Domain / URL
-│   ├── abuseipdb.py      ← IP reputation + abuse reports
-│   ├── malwarebazaar.py  ← Hash (malware database)
-│   ├── hybridanalysis.py ← Hash (sandbox verdict + threat score)
-│   ├── otx.py            ← Hash / IP / Domain / URL (threat pulses)
-│   ├── greynoise.py      ← IP (internet scanner classification)
-│   ├── urlscan.py        ← Domain / URL (live browser scan)
-│   ├── phishtank.py      ← URL (verified phishing database)
-│   ├── ipinfo.py         ← IP geolocation
-│   ├── crtsh.py          ← Domain certificate transparency / subdomain recon
-│   └── nvd.py            ← CVE CVSS score + description
-├── output/
-│   ├── renderer.py       ← Rich TUI (tables, verdict box, 9 ASCII banners)
-│   └── logs/             ← JSON run logs saved per execution (gitignored)
-├── tests/
-│   └── sample_iocs.txt   ← Sample IOCs for testing
-├── .env.example          ← Template — copy to .env and fill keys
-└── requirements.txt
+|-- analyzer.py           <- CLI entry point (dispatch, bulk/single, log, export)
+|-- detector.py           <- IOC type detection (hash/ip/domain/url/email/cve/filepath)
+|-- proxy_manager.py      <- Java proxy lifecycle (start / auto-stop on exit)
+|-- cache.py              <- File-based result cache (24 h TTL)
+|-- rate_limiter.py       <- Per-source sliding-window rate limiter (auto-scales with multi-key)
+|-- archie.bat            <- Windows launcher (run as: archie [flags])
+|-- apis/
+|   |-- base.py             <- Shared HTTP client (retry + backoff)
+|   |-- virustotal.py       <- Hash / IP / Domain / URL
+|   |-- abuseipdb.py        <- IP reputation + abuse reports
+|   |-- malwarebazaar.py    <- Hash (malware database)
+|   |-- hybridanalysis.py   <- Hash (sandbox verdict + threat score)
+|   |-- otx.py              <- Hash / IP / Domain / URL (threat pulses)
+|   |-- greynoise.py        <- IP (internet scanner classification)
+|   |-- urlscan.py          <- Domain / URL (live browser scan)
+|   |-- phishtank.py        <- URL (verified phishing database)
+|   |-- ipinfo.py           <- IP geolocation
+|   |-- crtsh.py            <- Domain cert transparency / subdomain recon
+|   `-- nvd.py              <- CVE CVSS score + description
+|-- output/
+|   |-- renderer.py         <- Rich TUI (tables, verdict box, ASCII banners)
+|   `-- logs/
+|       |-- json/             <- Run logs + JSON exports
+|       `-- csv/              <- CSV exports
+|-- tests/
+|   `-- sample_iocs.txt
+|-- .env.example          <- Template -- copy to .env and fill in your keys
+|-- requirements.txt
+`-- CHANGELOG.md
 ```
 
 ---
 
-## 📄 Run Logs
+## Run Logs
 
-Logging is **opt-in** — no log is written unless you request one.
+Logging is opt-in -- nothing is written unless you request it.
 
-| Mode | How to trigger | What is saved |
+| Mode | Flag | What is saved |
 |---|---|---|
-| **Raw dump** | `--log-raw` flag or menu option `[1]` | IOC, type, verdict, all parsed fields **+ full raw API response** from every source |
-| **Summary** | `--log-summary` flag or menu option `[2]` | IOC, type, verdict, key parsed fields only — raw responses stripped |
-| **None** | default (no flag / menu option `[0]`) | Nothing written |
+| Raw dump | `--log-raw` / `-lr` | IOC, type, verdict, parsed fields + full raw API response per source |
+| Summary | `--log-summary` / `-ls` | IOC, type, verdict, parsed fields (raw responses stripped) |
+| None | (default) | Nothing written |
 
-Logs are written to `output/logs/run_<timestamp>.json`.
+Logs are saved to `output/logs/json/run_<timestamp>.json`.
 
-Raw dump example:
+Log structure example (summary mode):
 ```json
 {
-  "run_at": "2026-03-20T22:27:17",
-  "log_mode": "raw",
-  "iocs": [
-    {
-      "value": "evil.com",
-      "type": "domain",
-      "verdict": "malicious",
-      "sources": [
-        {
-          "source": "VirusTotal",
-          "verdict": "malicious",
-          "data": { "detections": "7/94" },
-          "raw_response": { "...full VT JSON response..." },
-          "error": null
-        }
-      ]
-    }
-  ],
-  "summary": { "malicious": 1 }
-}
-```
-
-Summary log example (same structure, `raw_response` omitted from every source):
-```json
-{
-  "run_at": "2026-03-20T22:27:17",
+  "run_at": "2026-03-27T14:00:00",
   "log_mode": "summary",
   "iocs": [
     {
-      "value": "evil.com",
-      "type": "domain",
+      "value": "45.33.32.156",
+      "type": "ipv4",
       "verdict": "malicious",
       "sources": [
-        { "source": "VirusTotal", "verdict": "malicious", "data": { "detections": "7/94" }, "error": null }
+        { "source": "VirusTotal", "verdict": "malicious", "data": { "detections": "14/94" }, "error": null }
       ]
     }
   ],
@@ -211,15 +190,27 @@ Summary log example (same structure, `raw_response` omitted from every source):
 
 ---
 
-## 🔑 API Keys Setup
+## API Keys Setup
 
 ```bash
 copy .env.example .env
 ```
 
-Open `.env` and fill in keys for the sources you want active.  
-The tool works with zero keys — missing sources display `~ NO KEY` in the verdict table and are skipped cleanly.
+Open `.env` and fill in keys for the sources you want active.
+The tool works with zero keys -- missing sources display `~ NO KEY` and are skipped cleanly.
+
+### Multi-key rotation
+
+Every source supports N keys from N different accounts. Add numbered keys to `.env`:
+
+```ini
+VT_API_KEY=<account1>
+VT_API_KEY_2=<account2>
+VT_API_KEY_3=<account3>
+```
+
+The tool rotates to the next key automatically on any 429 response. The rate limiter auto-scales the per-minute budget proportionally (2 keys = 2x, 3 keys = 3x). No other configuration needed, numbering must be contiguous (no gaps).
 
 ---
 
-*ArCHie Analyzer — by Akshar*
+*ArCHie Analyzer -- Made with ❤️ by Akshar*

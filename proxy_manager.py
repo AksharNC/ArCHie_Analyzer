@@ -4,7 +4,10 @@ proxy_manager.py — Self-contained Java proxy lifecycle for ArCHie Analyzer.
 On tool start  → compiles SimpleProxy.java (once), spawns java SimpleProxy on port 8888
 On tool exit   → kills the java process automatically (via atexit)
 
-Netskope sees java.exe making outbound HTTPS connections → trusted process → bypass.
+Routes outbound HTTPS requests through a local Java tunnel, which can help
+work around network-level URL restrictions in corporate environments.
+Note: proxy effectiveness depends on the specific restrictions in place and
+may not bypass all filtering systems.
 """
 
 import atexit
@@ -17,6 +20,7 @@ PROXY_HOST = "127.0.0.1"
 PROXY_PORT = 8888
 
 _TOOL_DIR      = Path(__file__).parent
+_PROXY_DIR     = _TOOL_DIR / "proxy"   # SimpleProxy.java/.class live here
 _proxy_process = None
 
 
@@ -54,21 +58,21 @@ def _java_available() -> bool:
 
 def _compile_if_needed(console) -> bool:
     """Compile SimpleProxy.java → SimpleProxy.class if not already compiled."""
-    class_file = _TOOL_DIR / "SimpleProxy.class"
-    java_file  = _TOOL_DIR / "SimpleProxy.java"
+    class_file = _PROXY_DIR / "SimpleProxy.class"
+    java_file  = _PROXY_DIR / "SimpleProxy.java"
 
     if class_file.exists():
         return True
 
-    console.print("[cyan]  🔧 Compiling proxy (first run only)...[/cyan]")
+    console.print("[cyan]  [*] Compiling proxy (first run only)...[/cyan]")
     result = subprocess.run(
         ["javac", str(java_file)],
-        cwd=str(_TOOL_DIR),
+        cwd=str(_PROXY_DIR),
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        console.print(f"[red]  ❌ Compile failed:[/red] {result.stderr.strip()}")
+        console.print(f"[red]  [x] Compile failed:[/red] {result.stderr.strip()}")
         return False
     return True
 
@@ -97,7 +101,7 @@ def start(console=None) -> dict:
 
     # 1. Java available?
     if not _java_available():
-        log("[yellow]  ⚠️  Java not found — running without proxy. Netskope may block calls.[/yellow]")
+        log("[yellow]  [!] Java not found -- running without proxy. Some URLs may be restricted.[/yellow]")
         return {"running": False, "proxies": {}, "message": "Java not found"}
 
     # 2. Already running on port 8888?
@@ -113,7 +117,7 @@ def start(console=None) -> dict:
     log(f"[cyan]  🚀 Starting ArCHie proxy on port {PROXY_PORT}...[/cyan]")
     _proxy_process = subprocess.Popen(
         ["java", "SimpleProxy"],
-        cwd=str(_TOOL_DIR),
+        cwd=str(_PROXY_DIR),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -126,7 +130,7 @@ def start(console=None) -> dict:
             log(f"[green]  ✅ Proxy live on port {PROXY_PORT}[/green]")
             return _success()
 
-    log("[yellow]  ⚠️  Proxy took too long to start — running without it.[/yellow]")
+    log("[yellow]  [!] Proxy took too long to start -- running without it.[/yellow]")
     return {"running": False, "proxies": {}, "message": "Timeout"}
 
 

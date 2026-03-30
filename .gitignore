@@ -9,11 +9,18 @@ __pycache__/
 *.pycache
 
 # ─── Compiled Java bytecode ───────────────────────────────────────────────────
-SimpleProxy.class
+proxy/SimpleProxy.class
 *.class
 
-# ─── Run logs (contain IOC data, not for public history) ──────────────────────
-output/logs/*.json
+# ─── Run logs and generated outputs (contain IOC data) ───────────────────────
+# Ignore all content but keep the directory structure via .gitkeep
+output/logs/json/*
+!output/logs/json/.gitkeep
+output/logs/csv/*
+!output/logs/csv/.gitkeep
+output/cache/*
+!output/cache/.gitkeep
+*.log
 
 # ─── Virtual environments ─────────────────────────────────────────────────────
 venv/
@@ -27,8 +34,12 @@ Thumbs.db
 
 # ─── IDEs ─────────────────────────────────────────────────────────────────────
 .idea/
+.vscode/
 *.swp
 *.swo
+
+# ─── Copilot workspace prompt files (session-specific dev notes) ──────────────
+.github/prompts/
 
 # ─── Distribution / packaging ─────────────────────────────────────────────────
 dist/

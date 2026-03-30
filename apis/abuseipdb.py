@@ -6,27 +6,28 @@ Free tier: 1,000 checks/day.
 Sign up: https://www.abuseipdb.com/register
 """
 
-import os
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE  = "https://api.abuseipdb.com/api/v2"
-SOURCE = "AbuseIPDB"
+_BASE   = "https://api.abuseipdb.com/api/v2"
+SOURCE  = "AbuseIPDB"
+_client = ThreatIntelClient(timeout=10)
+_pool   = KeyPool("ABUSEIPDB_KEY")   # loads ABUSEIPDB_KEY, ABUSEIPDB_KEY_2, _3 ...
 
 
 def analyze_ip(value: str, proxies: dict) -> dict:
-    key = os.getenv("ABUSEIPDB_KEY", "").strip()
-    if not key:
+    if not _pool:
         return {"source": SOURCE, "verdict": "skipped", "data": {}, "raw_response": None, "error": "No API key"}
 
     try:
         ip   = value.split("/")[0]  # strip CIDR
-        resp = requests.get(
+        resp = _client.get(
             f"{_BASE}/check",
-            headers={"Key": key, "Accept": "application/json"},
+            key_pool=_pool,
+            key_header="Key",
+            headers={"Accept": "application/json"},
             params={"ipAddress": ip, "maxAgeInDays": 90},
             proxies=proxies,
-            verify=False,
-            timeout=10,
         )
         resp.raise_for_status()
         raw        = resp.json()

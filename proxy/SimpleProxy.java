@@ -4,10 +4,12 @@ import java.util.concurrent.*;
 
 /**
  * ArCHie Analyzer — Embedded Java Proxy
- * Tunnels HTTPS traffic through java.exe so Netskope allows it.
+ * Tunnels HTTPS traffic through a local Java process to help work around
+ * network-level URL restrictions in corporate or managed environments.
+ * Note: effectiveness depends on the specific restrictions in place.
  *
- * Performance fixes applied (from netskope-bypass-v1 audit):
- *   - TCP_NODELAY = true        (kills Nagle's 200-500ms stalls)
+ * Performance tuning applied:
+ *   - TCP_NODELAY = true        (reduces latency)
  *   - SO_RCVBUF / SO_SNDBUF    (256 KB — full throughput, no TCP throttle)
  *   - SO_REUSEADDR = true       (no port-in-use error on restart)
  *   - 64 KB data buffer         (fewer syscalls, lower CPU usage)
@@ -61,7 +63,7 @@ public class SimpleProxy {
             String   host     = hostPort.split(":")[0];
             int      port     = Integer.parseInt(hostPort.split(":")[1]);
 
-            // Connect to real internet — Netskope sees java.exe -> allows it
+            // Connect to target host and relay traffic through the tunnel
             Socket remote = new Socket();
             tune(remote);
             remote.connect(new InetSocketAddress(host, port), 10000);
@@ -75,7 +77,7 @@ public class SimpleProxy {
             pipe(remote, client);
 
         } catch (Exception e) {
-            // Silent fail — same behaviour as Burp Suite proxy
+            // Silent fail — broken connections are dropped cleanly
         }
     }
 

@@ -8,19 +8,19 @@ Purpose: Subdomain enumeration and org discovery for VAPT recon.
 """
 
 import requests
+from apis.base import ThreatIntelClient
 
-_BASE  = "https://crt.sh"
-SOURCE = "crt.sh"
+_BASE   = "https://crt.sh"
+SOURCE  = "crt.sh"
+_client = ThreatIntelClient(timeout=20)
 
 
 def analyze_domain(value: str, proxies: dict) -> dict:
     try:
-        resp = requests.get(
+        resp = _client.get(
             _BASE,
             params={"q": value, "output": "json"},
             proxies=proxies,
-            verify=False,
-            timeout=20,
             headers={"Accept": "application/json"},
         )
         resp.raise_for_status()

@@ -1,5 +1,5 @@
 """
-output/renderer.py — Rich TUI renderer for ArCHie Analyzer.
+output/renderer.py - Rich TUI renderer for ArCHie Analyzer.
 
 Handles:
   - Per-source results table (SOURCE | VERDICT | KEY FINDINGS)
@@ -16,19 +16,19 @@ from rich.panel   import Panel
 from rich.text    import Text
 from rich         import box
 
-console = Console()
+console = Console(legacy_windows=False)
 
-# ─── Verdict colour + emoji mapping ──────────────────────────────────────────
+# --- Verdict colour + emoji mapping ------------------------------------------
 
 _TUI_VERDICT = {
-    "malicious":  "█ MALICIOUS",
-    "suspicious": "▲ SUSPICIOUS",
-    "clean":      "✔ CLEAN",
-    "not_found":  "? NOT FOUND",
-    "skipped":    "~ NO KEY",
-    "info":       "i INFO",
-    "error":      "✖ ERROR",
-    "unknown":    "? UNKNOWN",
+    "malicious":  "[!] MALICIOUS",
+    "suspicious": "[~] SUSPICIOUS",
+    "clean":      "[+] CLEAN",
+    "not_found":  "[?] NOT FOUND",
+    "skipped":    "[-] NO KEY",
+    "info":       "[i] INFO",
+    "error":      "[x] ERROR",
+    "unknown":    "[?] UNKNOWN",
 }
 
 _VERDICT_COLOR = {
@@ -42,50 +42,52 @@ _VERDICT_COLOR = {
     "unknown":    "dim",
 }
 
-# ─── ASCII Banners (random on startup) ────────────────────────────────────────
+# --- ASCII Banners (random on startup) ----------------------------------------
 
 _ASCII_BANNERS = [
     # 1: Classic block letters
     r"""
     ___         _______ _     _       
-   /   | _ _   / ____/| |   | |_  ___ 
+   /   | _ _   / ___/| |   | |_  ___ 
   / /| || '_| | |     | |___| | |/ -_)
- / /_/ _|_|   | |____ |  ___  | |  __/
-/_/|_|         \____|_|_|   |_|_|\___| """,
+ / /_| ||_|   | |____ |  ___  | |\___/
+/_/  |_|       \_\____|_|   |_|_|  ArCHie Analyzer :: Threat Intel CLI""",
 
     # 2: Double-bar style
     r"""
-  ╔═╗┬─┐╔═╗╦ ╦┬┌─┐
-  ╠═╣├┬┘║  ╠═╣││ ─ 
-  ╩ ╩┴└─╚═╝╩ ╩┴└─┘
-  Threat Intelligence Analyzer""",
+  .--[ A r C H i e ]------------------.
+  |                                   |
+  |   A r C H i e   A n a l y z e r   |
+  |   Threat  Intelligence   CLI      |
+  '--[ SOC  |  VAPT  |  Phish ]------'""",
 
     # 3: Stars and slashes
     r"""
   *=========================================*
-   / \  _ _  ___   _  _ _      
-  / _ \| '_|/ __| | || |_)___  
- / /—\ \| | | (__  | __ | |/ -_)
+   / \   _ _  ___   _  _ _      
+  / _ \ | '_|/ __| | || |_) ___  
+ / /~\ \| | ( (__  | __ | |/ -_)
 /_/   \_\_|  \___| |_||_|_|\___|
   *===[ IOC Analyzer :: Threat Intel ]=====*""",
 
     # 4: Pipe/bracket terminal style
     r"""
   +--[ ArCHie ]-----------------------------+
-  |  /\  _ _ ___  _  _ _          .        |
-  | /  \| '_/ __|| || (_) ___ ___(_)       |
-  |/ /\ \ | | (__ | __ | |/ -_)___|        |
-  /_/  \_\_|  \___||_||_|_|\___(_)         |
-  +--[ Threat Intel CLI :: v3.0 ]----------+""",
+  |  /\   _ _  ___   _  _ _          .        |
+  | /  \ | '_|/ __| | || |_) ___              |
+  |/ /\ \| | ( (__  | __ | |/ -_)             |
+  /_/  \_\_|  \___| |_||_|_|\___|             |
+  +--[ Threat Intel CLI :: v4.0 ]----------+""",
 
-    # 5 (NEW): Big letter A — clean slash-art
+    # 5 (NEW): Big letter A - clean slash-art
     r"""
-      /\             /  \    ArCHie  Analyzer
-    / /\ \   ─────────────────────────────
-   / /  \ \   Threat Intelligence  •  v3.0
-  /_/    \_\   IOC  ·  Hash  ·  IP  ·  CVE""",
+      /\                 
+     /  \           ArCHie  Analyzer
+    / /\ \   -----------------------------
+   / /  \ \   Threat Intelligence  *  v4.0
+  /_/    \_\   IOC  |  Hash  |  IP  |  CVE""",
 
-    # 6: Minimal — /slash art
+    # 6: Minimal - /slash art
     r"""
      _  ____  ___  _  _ _ ___ 
     /_\|  _ \/ __|| || |_) __|
@@ -97,86 +99,116 @@ _ASCII_BANNERS = [
     r"""
   > INITIALIZING THREAT INTEL ENGINE...
   +--------------------------------------+
-  |   ╔═╗╦═╗╔═╗╦ ╦╦╔═╗  /\ |\  | /\   |
-  |   ╠═╣╠╦╝║  ╠═╣║║╣  /--\| \ |/--\  |
-  |   ╩ ╩╩╚═╚═╝╩ ╩╩╚═╝/_/\_|  \/_/\_\ |
+  |  A r C H i e   A n a l y z e r       |
+  |  Threat Intelligence  CLI  v4.0      |
+  |  IOC  .  Hash  .  Domain  .  CVE     |
   +--------------------------------------+
   > MODULES LOADED. READY.""",
 
-    # 8 (NEW): Big letter A — filled hash block
+    # 8 (NEW): Big letter A - filled hash block
     r"""
-      ###           ##  ##    ArCHie  Analyzer
-     #####    ──────────────────────────────────
-    ## # ##    Threat Intelligence  •  v3.0
-   ##     ##   IOC  ·  Hash  ·  Domain  ·  CVE
+       ###            ArCHie  Analyzer
+      ####    ----------------------------------
+     ##  ##
+    #######     Threat Intelligence  *  v4.0
+   ##     ##    IOC  .  Hash  .  Domain  .  CVE
   ##       ##""",
 
-    # 9 (NEW): Big letter A — box-draw outline
+    # 9: Big letter A - outline
     r"""
-       ╱╲            ╱  ╲      r  C  H  i  e   A n a l y z e r
-     ╱ ╌╌ ╲   ─────────────────────────────────────────────────
-   ╱        ╲   Threat Intelligence CLI  •  v3.0
- ╱╌╌╌╌╌╌╌╌╌╌╌╲  IOC  ┊  Hash  ┊  IP  ┊  CVE""",
+      /\                  
+     /  \           A r C H i e   A n a l y z e r
+    /----\   -------------------------------------------------
+   /      \   Threat Intelligence CLI  *  v4.0
+  /________\   IOC  |  Hash  |  IP  |  CVE""",
 
-    # 10 (NEW): Big letter A — star sparkle
+    # 10 (NEW): Big letter A - star sparkle
     r"""
-    *            *   *     ArCHie  Analyzer
-   * *     ─────────────────────────────────
-  *   *     Threat Intelligence  •  v3.0
- * * * * *   IOC  ┊  Hash  ┊  IP  ┊  CVE
-*         *""",
+    *               ArCHie  Analyzer
+   * *     ---------------------------------
+  *   *     Threat Intelligence  *  v4.0
+ * * * *    IOC  |  Hash  |  IP  |  CVE
+*       *""",
 ]
 
 
-# ─── Banner ───────────────────────────────────────────────────────────────────
+# --- Banner -------------------------------------------------------------------
 
 def print_banner():
     art  = random.choice(_ASCII_BANNERS)
     text = Text()
     text.append(art, style="bold bright_white")
     text.append("\n  by Akshar  ", style="color(61)")
-    text.append("v3.0", style="medium_purple1")
-    text.append("  —  Threat Intel CLI", style="color(61)")
+    text.append("v4.0", style="medium_purple1")
+    text.append("  --  Threat Intel CLI", style="color(61)")
     console.print(text)
     console.print()
+    console.print("  [color(61)]ArCHie Analyzer -- Made with [/color(61)][bold red]\u2764\ufe0f[/bold red][color(61)] by Akshar[/color(61)]\n")
 
 
-# ─── IOC Header ───────────────────────────────────────────────────────────────
+# --- IOC Header ---------------------------------------------------------------
 
 def print_ioc_header(ioc):
     console.print(f"  [bold white]IOC  [/bold white][dim]>>[/dim] [white]{ioc.value}[/white]")
-    console.print(f"  [bold white]TYPE [/bold white][dim]>>[/dim] {ioc.emoji}  [white]{ioc.display_label}[/white]")
+    console.print(f"  [bold white]TYPE [/bold white][dim]>>[/dim] [white]{ioc.display_label}[/white]")
     console.print()
 
 
-# ─── Results Table ────────────────────────────────────────────────────────────
+# --- Results Table ------------------------------------------------------------
+
+_IOC_NOUN: dict[str, str] = {
+    "ipv4":     "IP address",
+    "domain":   "domain",
+    "url":       "URL",
+    "md5":      "file",
+    "sha1":     "file",
+    "sha256":   "file",
+    "email":    "email address",
+    "cve":      "CVE",
+    "filepath": "file path",
+}
+
 
 def _is_url_value(v: str) -> bool:
     """Return True if a value is a plain URL."""
     return isinstance(v, str) and (v.startswith("http://") or v.startswith("https://"))
 
 
-def _format_data(data: dict) -> str:
+def _format_data(data: dict, ioc_type: str = "", verdict: str = "") -> str:
     """
     Flatten data dict into a readable pipe-separated string.
-    - Skips raw URL-only values (report links, etc.)
-    - Caps each individual value at 60 chars to prevent table overflow
+
+    Special handling for the 'detections' field (VirusTotal-style):
+      "4/94"  â†’  "4/94 security vendors flagged this IP address as malicious"
+
+    - Skips raw URL-only values (report links, screenshots, etc.)
+    - Caps each individual value at 65 chars to prevent table overflow
     """
     if not data:
-        return "—"
-    parts = []
+        return "-"
+
+    parts: list[str] = []
+
+    # VT-style detection count - must come first and be formatted specially
+    detections = data.get("detections")
+    if detections and isinstance(detections, str) and "/" in detections:
+        noun = _IOC_NOUN.get(ioc_type, "indicator")
+        parts.append(f"{detections} security vendors flagged this {noun} as malicious")
+
     for k, v in data.items():
+        if k == "detections":
+            continue          # already handled above
         sv = str(v)
-        if not sv or sv == "—" or _is_url_value(sv):
+        if not sv or sv == "-" or _is_url_value(sv):
             continue
-        # Truncate very long individual values
         if len(sv) > 65:
             sv = sv[:62] + "..."
         parts.append(sv)
-    return "  |  ".join(parts[:3]) if parts else "—"
+
+    return "  |  ".join(parts[:4]) if parts else "-"
 
 
-def print_results_table(results: list):
+def print_results_table(results: list, ioc_type: str = ""):
     table = Table(
         box=box.ROUNDED,
         border_style="color(54)",
@@ -185,13 +217,13 @@ def print_results_table(results: list):
     )
     table.add_column("SOURCE",       style="white",  no_wrap=True)
     table.add_column("VERDICT",      no_wrap=True)
-    table.add_column("KEY FINDINGS", style="white",  max_width=72)
+    table.add_column("KEY FINDINGS", style="white",  max_width=80)
 
     for r in results:
-        v         = r.get("verdict", "unknown")
-        color     = _VERDICT_COLOR.get(v) or "white"
-        label     = _TUI_VERDICT.get(v) or v.upper()
-        findings  = _format_data(r.get("data", {}))
+        v        = r.get("verdict", "unknown")
+        color    = _VERDICT_COLOR.get(v) or "white"
+        label    = _TUI_VERDICT.get(v) or v.upper()
+        findings = _format_data(r.get("data", {}), ioc_type=ioc_type, verdict=v)
         if r.get("error") and v == "error":
             findings = r["error"][:80]
 
@@ -205,17 +237,17 @@ def print_results_table(results: list):
     console.print()
 
 
-# ─── Verdict Box ─────────────────────────────────────────────────────────────
+# --- Verdict Box -------------------------------------------------------------
 
 def _compute_verdict(results: list) -> dict:
     """
     Determine overall verdict from all results.
 
     Verdict rules (analyst-friendly):
-      MALICIOUS  → ANY source says malicious
-      SUSPICIOUS → ANY source says suspicious (and none say malicious)
-      CLEAN      → ALL actionable sources say clean / not_found
-      UNKNOWN    → No actionable sources returned data
+      MALICIOUS  â†’ ANY source says malicious
+      SUSPICIOUS â†’ ANY source says suspicious (and none say malicious)
+      CLEAN      â†’ ALL actionable sources say clean / not_found
+      UNKNOWN    â†’ No actionable sources returned data
 
     Sources with verdict "skipped", "error", "info", or "unknown" are NOT
     counted as actionable (they didn't contribute a threat signal).
@@ -252,7 +284,7 @@ def _compute_verdict(results: list) -> dict:
         elif v in ("clean", "not_found"):
             clean_sources.append(src)
 
-    # ── Verdict decision ─────────────────────────────────────────────────────
+    # -- Verdict decision -----------------------------------------------------
     if malicious_sources:
         verdict = "malicious"
         agreed  = malicious_sources
@@ -318,7 +350,7 @@ def print_verdict_box(results: list):
     return v  # returned for bulk summary
 
 
-# ─── Bulk Summary Table ───────────────────────────────────────────────────────
+# --- Bulk Summary Table -------------------------------------------------------
 
 def print_bulk_summary(rows: list):
     """
@@ -360,3 +392,4 @@ def print_bulk_summary(rows: list):
         f"[bright_green]{counts.get('clean', 0)} Clean[/bright_green]  |  "
         f"[dim]{counts.get('unknown', 0)} Unknown[/dim]\n"
     )
+

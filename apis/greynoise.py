@@ -6,26 +6,26 @@ Free Community: 50 checks/day.
 Sign up: https://viz.greynoise.io/account/signup
 """
 
-import os
 import requests
+from apis.base import KeyPool, ThreatIntelClient
 
-_BASE  = "https://api.greynoise.io/v3/community"
-SOURCE = "GreyNoise"
+_BASE   = "https://api.greynoise.io/v3/community"
+SOURCE  = "GreyNoise"
+_client = ThreatIntelClient(timeout=10)
+_pool   = KeyPool("GREYNOISE_KEY")   # loads GREYNOISE_KEY, GREYNOISE_KEY_2, _3 ...
 
 
 def analyze_ip(value: str, proxies: dict) -> dict:
-    key = os.getenv("GREYNOISE_KEY", "").strip()
-    if not key:
+    if not _pool:
         return {"source": SOURCE, "verdict": "skipped", "data": {}, "raw_response": None, "error": "No API key"}
 
     try:
         ip   = value.split("/")[0]  # strip CIDR
-        resp = requests.get(
+        resp = _client.get(
             f"{_BASE}/{ip}",
-            headers={"key": key},
+            key_pool=_pool,
+            key_header="key",
             proxies=proxies,
-            verify=False,
-            timeout=10,
         )
 
         # 404 = IP not seen by GreyNoise (not necessarily safe, just not observed)
