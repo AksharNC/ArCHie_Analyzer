@@ -111,6 +111,32 @@ def _build_dispatch():
         "unknown":  [],
     }
 
+# ─── Source filter ──────────────────────────────────────────────────────────
+
+# All source labels that appear in the dispatch table.
+# Used by --list-sources and for validation.
+_ALL_SOURCES: list[str] = [
+    "VirusTotal", "AbuseIPDB", "GreyNoise", "MalwareBazaar",
+    "OTX AlienVault", "Hybrid Analysis", "URLScan.io", "PhishTank",
+    "IPInfo", "crt.sh", "NVD",
+]
+
+
+def _filter_dispatch(dispatch: dict, sources: list[str]) -> dict:
+    """
+    Return a copy of *dispatch* that only contains handlers whose label
+    matches one of the requested *sources* (case-insensitive).
+    If *sources* is empty the original dispatch is returned unchanged.
+    """
+    if not sources:
+        return dispatch
+    needle = {s.strip().lower() for s in sources}
+    return {
+        ioc_type: [(fn, lbl) for fn, lbl in handlers if lbl.lower() in needle]
+        for ioc_type, handlers in dispatch.items()
+    }
+
+
 # ─── Run Log ────────────────────────────────────────────────────────────────────────────────
 
 _run_log: dict = {"run_at": None, "iocs": [], "summary": {}}
@@ -130,6 +156,44 @@ def _log_ioc(ioc: IOC, results: list, verdict: str):
         "verdict":       verdict,
         "sources":       results,
     })
+
+
+def _handle_interrupt(log_mode: str | None, output_fmt: str | None) -> None:
+    """
+    Clean Ctrl+C handler — suppress the traceback, show partial-results count,
+    and offer to save whatever was collected before the interrupt.
+    """
+    console.print("\n\n  [yellow]⚠  Scan interrupted (Ctrl+C).[/yellow]")
+
+    completed = len(_run_log["iocs"])
+    if not completed:
+        console.print("  [dim]No results collected yet. Exiting.[/dim]\n")
+        sys.exit(0)
+
+    console.print(f"  [dim]{completed} IOC(s) completed before interrupt.[/dim]\n")
+    console.print("  [bold white]Save partial results?[/bold white]")
+    console.print("  [cyan][1][/cyan]  Summary log  [dim](output/logs/json/ — verdict + key findings)[/dim]")
+    console.print("  [cyan][2][/cyan]  Raw dump log [dim](output/logs/json/ — full API responses)[/dim]")
+    console.print("  [cyan][3][/cyan]  CSV export   [dim](output/logs/csv/)[/dim]")
+    console.print("  [cyan][4][/cyan]  JSON export  [dim](output/logs/json/)[/dim]")
+    console.print("  [dim][0]  Exit without saving (default)[/dim]\n")
+
+    try:
+        choice = input("  Choice [0]: ").strip() or "0"
+    except (KeyboardInterrupt, EOFError):
+        choice = "0"
+
+    if choice == "1":
+        _save_log("summary")
+    elif choice == "2":
+        _save_log("raw")
+    elif choice == "3":
+        _export_results("csv")
+    elif choice == "4":
+        _export_results("json")
+
+    console.print("  [dim]Exiting ArCHie Analyzer.[/dim]\n")
+    sys.exit(0)
 
 
 def _save_log(mode: str | None = None):
@@ -519,8 +583,15 @@ def _ask_log_mode() -> str | None:
     return {"1": "raw", "2": "summary"}.get(choice, None)
 
 
-def _interactive_menu(proxies: dict, dispatch: dict, verbose: bool, workers: int):
+def _interactive_menu(proxies: dict, dispatch: dict, verbose: bool, workers: int,
+                      active_sources: list[str] | None = None):
     """Show a numbered menu and loop until the user exits."""
+    if active_sources:
+        console.print(
+            f"  [dim]Source filter active: "
+            + ", ".join(f"[white]{s}[/white]" for s in active_sources)
+            + "[/dim]\n"
+        )
     while True:
         console.print()
         console.print("  [bold white]What would you like to do?[/bold white]")
@@ -607,6 +678,19 @@ def main():
     )
     parser.add_argument("-i", "--ioc",      help="Single IOC to analyze")
     parser.add_argument("-f", "--file",     help="File containing one IOC per line")
+    parser.add_argument(
+        "-s", "--sources",
+        metavar="SOURCE,...",
+        help=(
+            'Comma-separated list of sources to query, e.g. "VirusTotal,AbuseIPDB". '
+            "All other sources are skipped. Use --list-sources to see valid names."
+        ),
+    )
+    parser.add_argument(
+        "--list-sources",
+        action="store_true",
+        help="Print all available source names and exit.",
+    )
     parser.add_argument("-np", "--no-proxy",  action="store_true",
                         help="Skip Java proxy (use direct connection)")
     parser.add_argument("-v", "--verbose",  action="store_true",
@@ -631,6 +715,15 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # ── List sources shortcut ──
+    if args.list_sources:
+        print_banner()
+        console.print("  [bold white]Available source names[/bold white] (use with -s):\n")
+        for name in _ALL_SOURCES:
+            console.print(f"    [cyan]•[/cyan]  {name}")
+        console.print()
+        sys.exit(0)
 
     # ── Cache setup ──
     if args.no_cache:
@@ -663,29 +756,53 @@ def main():
     dispatch = _build_dispatch()
     workers  = max(1, args.workers)
 
+    # ── Source filter ──
+    active_sources: list[str] = []
+    if args.sources:
+        active_sources = [s.strip() for s in args.sources.split(",") if s.strip()]
+        # Validate — warn on unrecognised names but don't abort
+        known_lower = {n.lower() for n in _ALL_SOURCES}
+        bad = [s for s in active_sources if s.lower() not in known_lower]
+        if bad:
+            console.print(
+                f"  [yellow]⚠️  Unknown source(s): {', '.join(bad)}. "
+                f"Run --list-sources to see valid names.[/yellow]\n"
+            )
+        dispatch = _filter_dispatch(dispatch, active_sources)
+        console.print(
+            "  [dim]Source filter: "
+            + ", ".join(f"[white]{s}[/white]" for s in active_sources)
+            + "[/dim]\n"
+        )
+
     # ── Dispatch based on flags ──
-    if args.file:
-        path = Path(args.file)
-        if not path.exists():
-            console.print(f"[red]❌ File not found: {args.file}[/red]")
-            sys.exit(1)
-        run_bulk(path.read_text(encoding="utf-8"), proxies, dispatch,
-                 verbose=args.verbose, workers=workers)
-        _save_log(cli_log_mode)
-        if args.output:
-            _export_results(args.output)
+    try:
+        if args.file:
+            path = Path(args.file)
+            if not path.exists():
+                console.print(f"[red]❌ File not found: {args.file}[/red]")
+                sys.exit(1)
+            run_bulk(path.read_text(encoding="utf-8"), proxies, dispatch,
+                     verbose=args.verbose, workers=workers)
+            _save_log(cli_log_mode)
+            if args.output:
+                _export_results(args.output)
 
-    elif args.ioc:
-        run_single(args.ioc.strip(), proxies, dispatch,
-                   verbose=args.verbose, workers=workers)
-        _save_log(cli_log_mode)
-        if args.output:
-            _export_results(args.output)
+        elif args.ioc:
+            run_single(args.ioc.strip(), proxies, dispatch,
+                       verbose=args.verbose, workers=workers)
+            _save_log(cli_log_mode)
+            if args.output:
+                _export_results(args.output)
 
-    else:
-        # No flags → show interactive menu
-        _interactive_menu(proxies, dispatch,
-                          verbose=args.verbose, workers=workers)
+        else:
+            # No flags → show interactive menu
+            _interactive_menu(proxies, dispatch,
+                              verbose=args.verbose, workers=workers,
+                              active_sources=active_sources or None)
+
+    except KeyboardInterrupt:
+        _handle_interrupt(cli_log_mode, args.output)
 
 
 if __name__ == "__main__":

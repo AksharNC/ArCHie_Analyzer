@@ -125,10 +125,11 @@ class _SourceTracker:
     """Sliding-window (60-second) tracker for a single API source."""
 
     def __init__(self, limit: int):
-        self._limit  = limit
+        self._limit          = limit
         self._window: deque[float] = deque()
-        self._lock   = threading.Lock()
-        self._warned = False
+        self._lock           = threading.Lock()
+        self._warned         = False
+        self._throttle_logged = False  # suppress repeated throttle messages
 
     def _prune(self) -> None:
         cutoff = time.monotonic() - 60.0
@@ -145,14 +146,17 @@ class _SourceTracker:
                 oldest = self._window[0]
                 wait   = 60.0 - (time.monotonic() - oldest) + 0.1
                 if wait > 0:
-                    _console.print(
-                        f"\n  [yellow]⏳  Rate limit reached for "
-                        f"[bold]{source}[/bold]. "
-                        f"Throttling {wait:.1f}s to stay within limits...[/yellow]\n"
-                    )
+                    if not self._throttle_logged:
+                        _console.print(
+                            f"\n  [yellow]⏳  Rate limit reached for "
+                            f"[bold]{source}[/bold]. "
+                            f"Throttling for up to {wait:.1f}s to stay within limits...[/yellow]\n"
+                        )
+                        self._throttle_logged = True
                     time.sleep(wait)
                 self._prune()
-                self._warned = False
+                # Do NOT reset _warned here — the window is still near-full
+                # after one entry expires; let the else-branch handle it.
 
             else:
                 # Approaching limit → warn once per filling window
@@ -166,7 +170,9 @@ class _SourceTracker:
                     )
                     self._warned = True
                 elif usage < _WARN_AT:
-                    self._warned = False
+                    # Window has genuinely drained — reset both flags
+                    self._warned          = False
+                    self._throttle_logged = False
 
             self._window.append(time.monotonic())
 
