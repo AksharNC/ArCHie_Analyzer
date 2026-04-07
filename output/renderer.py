@@ -45,41 +45,7 @@ _VERDICT_COLOR = {
 # --- ASCII Banners (random on startup) ----------------------------------------
 
 _ASCII_BANNERS = [
-    # 1: Classic block letters
-    r"""
-    ___         _______ _     _       
-   /   | _ _   / ___/| |   | |_  ___ 
-  / /| || '_| | |     | |___| | |/ -_)
- / /_| ||_|   | |____ |  ___  | |\___/
-/_/  |_|       \_\____|_|   |_|_|  ArCHie Analyzer :: Threat Intel CLI""",
-
-    # 2: Double-bar style
-    r"""
-  .--[ A r C H i e ]------------------.
-  |                                   |
-  |   A r C H i e   A n a l y z e r   |
-  |   Threat  Intelligence   CLI      |
-  '--[ SOC  |  VAPT  |  Phish ]------'""",
-
-    # 3: Stars and slashes
-    r"""
-  *=========================================*
-   / \   _ _  ___   _  _ _      
-  / _ \ | '_|/ __| | || |_) ___  
- / /~\ \| | ( (__  | __ | |/ -_)
-/_/   \_\_|  \___| |_||_|_|\___|
-  *===[ IOC Analyzer :: Threat Intel ]=====*""",
-
-    # 4: Pipe/bracket terminal style
-    r"""
-  +--[ ArCHie ]-----------------------------+
-  |  /\   _ _  ___   _  _ _          .        |
-  | /  \ | '_|/ __| | || |_) ___              |
-  |/ /\ \| | ( (__  | __ | |/ -_)             |
-  /_/  \_\_|  \___| |_||_|_|\___|             |
-  +--[ Threat Intel CLI :: v4.0 ]----------+""",
-
-    # 5 (NEW): Big letter A - clean slash-art
+    # 1: Big letter A - clean slash-art
     r"""
       /\                 
      /  \           ArCHie  Analyzer
@@ -87,15 +53,7 @@ _ASCII_BANNERS = [
    / /  \ \   Threat Intelligence  *  v4.0
   /_/    \_\   IOC  |  Hash  |  IP  |  CVE""",
 
-    # 6: Minimal - /slash art
-    r"""
-     _  ____  ___  _  _ _ ___ 
-    /_\|  _ \/ __|| || |_) __|
-   / _ \ |_) | (__ | __ | |___ \
-  /_/ \_\ __/ \___||_||_|_|____/
-        |_|   :: IOC Triage CLI""",
-
-    # 7: Scan-line / matrix style
+    # 2: Scan-line / matrix style
     r"""
   > INITIALIZING THREAT INTEL ENGINE...
   +--------------------------------------+
@@ -105,7 +63,7 @@ _ASCII_BANNERS = [
   +--------------------------------------+
   > MODULES LOADED. READY.""",
 
-    # 8 (NEW): Big letter A - filled hash block
+    # 3: Big letter A - filled hash block
     r"""
        ###            ArCHie  Analyzer
       ####    ----------------------------------
@@ -113,22 +71,6 @@ _ASCII_BANNERS = [
     #######     Threat Intelligence  *  v4.0
    ##     ##    IOC  .  Hash  .  Domain  .  CVE
   ##       ##""",
-
-    # 9: Big letter A - outline
-    r"""
-      /\                  
-     /  \           A r C H i e   A n a l y z e r
-    /----\   -------------------------------------------------
-   /      \   Threat Intelligence CLI  *  v4.0
-  /________\   IOC  |  Hash  |  IP  |  CVE""",
-
-    # 10 (NEW): Big letter A - star sparkle
-    r"""
-    *               ArCHie  Analyzer
-   * *     ---------------------------------
-  *   *     Threat Intelligence  *  v4.0
- * * * *    IOC  |  Hash  |  IP  |  CVE
-*       *""",
 ]
 
 

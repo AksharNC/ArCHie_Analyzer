@@ -10,10 +10,13 @@ Usage:
     rate_limiter.record("VirusTotal")   # call before each API request
 """
 
+import datetime
+import json
 import os
 import threading
 import time
 from collections import deque
+from pathlib import Path
 
 from rich.console import Console
 
@@ -66,6 +69,21 @@ _KEY_BASE_ENV: dict[str, str] = {
     "PhishTank":       "PHISHTANK_KEY",
     "IPInfo":          "IPINFO_KEY",
     "NVD":             "NVD_API_KEY",
+}
+
+# Free-tier daily call limits per source (None = no published limit / unlimited).
+_DAILY_LIMITS: dict[str, int | None] = {
+    "VirusTotal":      500,
+    "AbuseIPDB":       1_000,
+    "GreyNoise":       50,       # Community tier: 50/day
+    "MalwareBazaar":   None,
+    "OTX AlienVault":  None,
+    "Hybrid Analysis": 200,
+    "URLScan.io":      100,
+    "PhishTank":       None,
+    "IPInfo":          1_667,    # ~50 k/month free → ≈1 667/day
+    "crt.sh":          None,
+    "NVD":             None,
 }
 
 _MAX_KEY_SCAN = 10   # upper bound for numbered-suffix scanning
@@ -137,44 +155,56 @@ class _SourceTracker:
             self._window.popleft()
 
     def record(self, source: str) -> None:
-        with self._lock:
-            self._prune()
-            current = len(self._window)
+        # Loop until the window has room — sleep is done OUTSIDE the lock so
+        # other threads can proceed rather than queuing serially behind a
+        # sleeping thread.
+        while True:
+            wait           = 0.0
+            log_throttle   = False
 
-            # Hard limit reached → throttle until oldest entry expires
-            if current >= self._limit:
-                oldest = self._window[0]
-                wait   = 60.0 - (time.monotonic() - oldest) + 0.1
-                if wait > 0:
-                    if not self._throttle_logged:
-                        _console.print(
-                            f"\n  [yellow]⏳  Rate limit reached for "
-                            f"[bold]{source}[/bold]. "
-                            f"Throttling for up to {wait:.1f}s to stay within limits...[/yellow]\n"
-                        )
-                        self._throttle_logged = True
-                    time.sleep(wait)
+            with self._lock:
                 self._prune()
-                # Do NOT reset _warned here — the window is still near-full
-                # after one entry expires; let the else-branch handle it.
+                current = len(self._window)
 
-            else:
-                # Approaching limit → warn once per filling window
-                usage = (current + 1) / self._limit
-                if usage >= _WARN_AT and not self._warned:
-                    remaining = self._limit - current - 1
-                    _console.print(
-                        f"\n  [yellow]⚠️   [bold]{source}[/bold] approaching "
-                        f"rate limit — {current + 1}/{self._limit} req/min "
-                        f"({remaining} remaining this minute)[/yellow]\n"
-                    )
-                    self._warned = True
-                elif usage < _WARN_AT:
-                    # Window has genuinely drained — reset both flags
-                    self._warned          = False
-                    self._throttle_logged = False
+                if current >= self._limit:
+                    oldest = self._window[0]
+                    wait   = 60.0 - (time.monotonic() - oldest) + 0.1
+                    if wait > 0:
+                        if not self._throttle_logged:
+                            log_throttle          = True
+                            self._throttle_logged = True
+                        # Release lock and sleep below
+                    else:
+                        wait = 0.0  # window already drained while we waited
+                else:
+                    # Approaching limit → warn once per filling window
+                    usage = (current + 1) / self._limit
+                    if usage >= _WARN_AT and not self._warned:
+                        remaining = self._limit - current - 1
+                        _console.print(
+                            f"\n  [yellow]⚠️   [bold]{source}[/bold] approaching "
+                            f"rate limit — {current + 1}/{self._limit} req/min "
+                            f"({remaining} remaining this minute)[/yellow]\n"
+                        )
+                        self._warned = True
+                    elif usage < _WARN_AT:
+                        # Window has genuinely drained — reset both flags
+                        self._warned          = False
+                        self._throttle_logged = False
+                    self._window.append(time.monotonic())
+                    return  # slot acquired, done
 
-            self._window.append(time.monotonic())
+            # ── Lock released ── print + sleep outside so other threads
+            # can check their own windows concurrently.
+            if log_throttle:
+                _console.print(
+                    f"\n  [yellow]⏳  Rate limit reached for "
+                    f"[bold]{source}[/bold]. "
+                    f"Throttling for up to {wait:.1f}s to stay within limits...[/yellow]\n"
+                )
+            if wait > 0:
+                time.sleep(wait)
+            # Re-loop → re-lock → re-prune → try to claim a slot
 
 
 class RateLimiter:
@@ -201,8 +231,155 @@ class RateLimiter:
 
         # Call record outside the creation lock to avoid holding it during sleep
         self._trackers[source].record(source)
+        daily_tracker.record(source)   # persist daily count
 
 
-# Module-level singleton — import directly:
-#   from rate_limiter import rate_limiter
-rate_limiter = RateLimiter()
+# ─── Daily Usage Tracker ──────────────────────────────────────────────────────
+
+class DailyUsageTracker:
+    """
+    Persists per-source daily API call counts to output/api_usage.json.
+
+    Resets automatically each calendar day.  Thread-safe.
+    """
+
+    _PATH = Path(__file__).parent / "output" / "api_usage.json"
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._data = self._load()
+
+    @staticmethod
+    def _today() -> str:
+        return datetime.date.today().isoformat()
+
+    def _load(self) -> dict:
+        if self._PATH.exists():
+            try:
+                d = json.loads(self._PATH.read_text(encoding="utf-8"))
+                if d.get("date") == self._today():
+                    return d
+            except (json.JSONDecodeError, KeyError, OSError):
+                pass
+        return {"date": self._today(), "counts": {}}
+
+    def _save(self) -> None:
+        try:
+            self._PATH.parent.mkdir(parents=True, exist_ok=True)
+            self._PATH.write_text(
+                json.dumps(self._data, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass  # Non-fatal — tracking is best-effort
+
+    def _reset_if_new_day(self) -> None:
+        """Must be called with self._lock held."""
+        if self._data.get("date") != self._today():
+            self._data = {"date": self._today(), "counts": {}, "exhausted": {}}
+
+    def record(self, source: str) -> None:
+        with self._lock:
+            self._reset_if_new_day()
+            counts = self._data.setdefault("counts", {})
+            counts[source] = counts.get(source, 0) + 1
+            self._save()
+
+    def mark_exhausted(self, source: str, reason: str = "") -> None:
+        """Mark *source* as having exhausted its daily quota."""
+        with self._lock:
+            self._reset_if_new_day()
+            self._data.setdefault("exhausted", {})[source] = reason or "quota exceeded"
+            self._save()
+
+    def is_exhausted(self, source: str) -> bool:
+        """Return True if *source* hit its daily quota today."""
+        with self._lock:
+            self._reset_if_new_day()
+            return source in self._data.get("exhausted", {})
+
+    def get_counts(self) -> dict[str, int]:
+        """Return a snapshot of today's call counts, keyed by source name."""
+        with self._lock:
+            if self._data.get("date") != self._today():
+                return {}
+            return dict(self._data.get("counts", {}))
+
+    def get_exhausted(self) -> dict[str, str]:
+        """Return {source: reason} for all sources exhausted today."""
+        with self._lock:
+            if self._data.get("date") != self._today():
+                return {}
+            return dict(self._data.get("exhausted", {}))
+
+    def clear_exhausted(self, source: str | None = None) -> None:
+        """
+        Clear the exhausted flag for *source*, or clear all if source is None.
+        Has no effect if the source wasn't marked exhausted.
+        """
+        with self._lock:
+            self._reset_if_new_day()
+            exhausted = self._data.setdefault("exhausted", {})
+            if source is None:
+                exhausted.clear()
+            else:
+                exhausted.pop(source, None)
+            self._save()
+
+
+# Module-level singletons
+daily_tracker = DailyUsageTracker()
+rate_limiter  = RateLimiter()
+
+
+# ─── API Status Helper ────────────────────────────────────────────────────────
+
+def get_api_status() -> list[dict]:
+    """
+    Return a list of per-source status dicts for the --api-status display.
+
+    Each dict contains:
+      source, configured, key_count, per_min_limit, daily_limit,
+      calls_today, remaining_today, exhausted
+    """
+    daily_counts   = daily_tracker.get_counts()
+    exhausted_map  = daily_tracker.get_exhausted()
+    rows = []
+
+    for source in _DEFAULTS:
+        key_base  = _KEY_BASE_ENV.get(source)
+
+        if key_base:
+            configured = bool(os.getenv(key_base, "").strip())
+            key_count = _count_active_keys(source) if configured else 0
+        else:
+            configured = True   # no key required (e.g. crt.sh)
+            key_count  = 0
+
+        per_min   = _RATE_LIMITS.get(source)
+        daily_lim = _DAILY_LIMITS.get(source)
+
+        calls_today = daily_counts.get(source, 0)
+        exhausted   = source in exhausted_map
+
+        # If exhausted, remaining is definitively 0, regardless of local count
+        if exhausted:
+            remaining = 0
+        elif daily_lim is not None:
+            remaining = max(0, daily_lim - calls_today)
+        else:
+            remaining = None
+
+        rows.append({
+            "source":           source,
+            "configured":       configured,
+            "key_count":        key_count,
+            "per_min_limit":    per_min,
+            "daily_limit":      daily_lim,
+            "calls_today":      calls_today,
+            "remaining_today":  remaining,
+            "exhausted":        exhausted,
+            "exhausted_reason": exhausted_map.get(source, ""),
+        })
+
+    return rows

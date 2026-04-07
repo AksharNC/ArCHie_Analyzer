@@ -12,7 +12,7 @@ from apis.base import KeyPool, ThreatIntelClient
 
 _BASE   = "https://www.virustotal.com/api/v3"
 SOURCE  = "VirusTotal"
-_client = ThreatIntelClient(timeout=15)
+_client = ThreatIntelClient(timeout=15, source=SOURCE)
 _pool   = KeyPool("VT_API_KEY")   # loads VT_API_KEY, VT_API_KEY_2, _3 ...
 
 

@@ -11,7 +11,7 @@ from apis.base import KeyPool, ThreatIntelClient
 
 _BASE   = "https://api.abuseipdb.com/api/v2"
 SOURCE  = "AbuseIPDB"
-_client = ThreatIntelClient(timeout=10)
+_client = ThreatIntelClient(timeout=10, source=SOURCE)
 _pool   = KeyPool("ABUSEIPDB_KEY")   # loads ABUSEIPDB_KEY, ABUSEIPDB_KEY_2, _3 ...
 
 

@@ -24,7 +24,10 @@ from pathlib import Path
 from typing import Optional
 
 _CACHE_DIR = Path(__file__).parent / "output" / "cache"
-_TTL_SECS  = int(os.getenv("CACHE_TTL_HOURS", "24")) * 3600
+try:
+    _TTL_SECS = int(os.getenv("CACHE_TTL_HOURS", "24")) * 3600
+except ValueError:
+    _TTL_SECS = 24 * 3600  # fallback: 24 hours
 _enabled   = True
 
 
@@ -50,6 +53,7 @@ def get(source: str, ioc_value: str) -> Optional[dict]:
             return None
         return entry.get("result")
     except Exception:
+        path.unlink(missing_ok=True)  # remove corrupt/unreadable file so the next run re-fetches
         return None
 
 

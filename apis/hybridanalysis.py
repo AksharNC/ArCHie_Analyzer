@@ -12,7 +12,7 @@ from apis.base import KeyPool, ThreatIntelClient
 
 _BASE   = "https://www.hybrid-analysis.com/api/v2"
 SOURCE  = "Hybrid Analysis"
-_client = ThreatIntelClient(timeout=20)
+_client = ThreatIntelClient(timeout=20, source=SOURCE)
 _pool   = KeyPool("HYBRID_ANALYSIS_KEY")   # loads HYBRID_ANALYSIS_KEY, HYBRID_ANALYSIS_KEY_2, _3 ...
 
 

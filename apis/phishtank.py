@@ -13,7 +13,7 @@ from apis.base import KeyPool, ThreatIntelClient
 
 _BASE   = "https://checkurl.phishtank.com/checkurl/"
 SOURCE  = "PhishTank"
-_client = ThreatIntelClient(timeout=15)
+_client = ThreatIntelClient(timeout=15, source=SOURCE)
 _pool   = KeyPool("PHISHTANK_KEY")   # loads PHISHTANK_KEY, PHISHTANK_KEY_2, _3 ...
 
 
@@ -25,8 +25,8 @@ def analyze_url(value: str, proxies: dict) -> dict:
     if not _pool:
         return _no_key()
     try:
-        # PhishTank key is in POST body, not headers — use _pool.current() directly.
-        # Key rotation on 429 is handled by ThreatIntelClient backoff.
+        # PhishTank requires the key in the POST body, not headers.
+        # Key rotation is not supported (body keys can't be swapped by ThreatIntelClient).
         resp = _client.post(
             _BASE,
             data={

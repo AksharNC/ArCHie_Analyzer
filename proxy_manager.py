@@ -11,6 +11,7 @@ may not bypass all filtering systems.
 """
 
 import atexit
+import os
 import socket
 import subprocess
 import time

@@ -10,18 +10,20 @@ import requests
 from apis.base import KeyPool, ThreatIntelClient
 
 SOURCE  = "IPInfo"
-_client = ThreatIntelClient(timeout=8)
+_client = ThreatIntelClient(timeout=8, source=SOURCE)
 _pool   = KeyPool("IPINFO_KEY")   # optional; loads IPINFO_KEY, IPINFO_KEY_2, _3 ...
 
 
 def analyze_ip(value: str, proxies: dict) -> dict:
     try:
-        ip    = value.split("/")[0]   # strip CIDR
-        # IPInfo key goes in URL as ?token=; key_pool/key_header not applicable.
-        key   = _pool.current()
-        token = f"?token={key}" if key else ""
-        resp  = _client.get(
-            f"https://ipinfo.io/{ip}/json{token}",
+        ip  = value.split("/")[0]   # strip CIDR
+        # Pass the key as Authorization: Bearer so it never appears in the URL
+        # (prevents leaking the token in exception messages or proxy access logs).
+        key     = _pool.current()
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        resp = _client.get(
+            f"https://ipinfo.io/{ip}/json",
+            headers=headers,
             proxies=proxies,
         )
         resp.raise_for_status()

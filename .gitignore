@@ -20,6 +20,7 @@ output/logs/csv/*
 !output/logs/csv/.gitkeep
 output/cache/*
 !output/cache/.gitkeep
+output/api_usage.json
 *.log
 
 # ─── Virtual environments ─────────────────────────────────────────────────────

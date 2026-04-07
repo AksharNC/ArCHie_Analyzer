@@ -15,57 +15,69 @@ class IOC:
     value:         str
     ioc_type:      str   # sha256 | sha1 | md5 | cve | url | email | ipv4 | domain | filepath | unknown
     display_label: str   # Human-readable label shown in TUI
-    emoji:         str   # Emoji badge shown in header
 
 
 # ─── Pattern Table ────────────────────────────────────────────────────────────
-# (ioc_type, compiled_regex, display_label, emoji)
+# (ioc_type, compiled_regex, display_label)
 # Each pattern is tried in order — first match wins.
 
 _PATTERNS = [
     # Hashes — most specific first (longest match)
     ("sha256",   re.compile(r"^[a-fA-F0-9]{64}$"),
-                 "SHA-256 Hash", ""),
+                 "SHA-256 Hash"),
     ("sha1",     re.compile(r"^[a-fA-F0-9]{40}$"),
-                 "SHA-1 Hash",   ""),
+                 "SHA-1 Hash"),
     ("md5",      re.compile(r"^[a-fA-F0-9]{32}$"),
-                 "MD5 Hash",     ""),
+                 "MD5 Hash"),
 
     # CVE — must come before domain (CVE-2024-1234 could loosely match domain)
     ("cve",      re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE),
-                 "CVE ID",       ""),
+                 "CVE ID"),
 
     # URL — must come before domain (full URL contains domain)
     ("url",      re.compile(r"^https?://[^\s]+", re.IGNORECASE),
-                 "URL",          ""),
+                 "URL"),
 
     # Email — must come before domain (email contains domain part)
     ("email",    re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$"),
-                 "Email Address",""),
+                 "Email Address"),
 
-    # IPv4 (with optional CIDR)
+    # IPv4 (with optional CIDR) — validated by _is_valid_ipv4() after regex match
     ("ipv4",     re.compile(r"^(\d{1,3}\.){3}\d{1,3}(/\d{1,2})?$"),
-                 "IPv4 Address", ""),
+                 "IPv4 Address"),
 
     # Domain — loose check, must have dot and valid TLD
     ("domain",   re.compile(r"^([a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,}$"),
-                 "Domain",       ""),
+                 "Domain"),
 
     # File paths: Windows (C:\), Unix (/), home (~), env (%TEMP%)
     ("filepath", re.compile(r"^([A-Za-z]:\\|/|~/|%[A-Z_]+%)"),
-                 "File Path",    ""),
+                 "File Path"),
 ]
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
+def _is_valid_ipv4(value: str) -> bool:
+    """Return True if value is a valid IPv4 address with optional /0-32 CIDR."""
+    parts = value.split("/")
+    octets = parts[0].split(".")
+    if not all(0 <= int(o) <= 255 for o in octets):
+        return False
+    if len(parts) == 2 and not (0 <= int(parts[1]) <= 32):
+        return False
+    return True
+
+
 def detect_single(raw: str) -> IOC:
     """Detect the IOC type of a single trimmed string."""
     value = raw.strip()
-    for ioc_type, pattern, label, emoji in _PATTERNS:
+    for ioc_type, pattern, label in _PATTERNS:
         if pattern.search(value):
-            return IOC(value=value, ioc_type=ioc_type, display_label=label, emoji=emoji)
-    return IOC(value=value, ioc_type="unknown", display_label="Unknown", emoji="")
+            if ioc_type == "ipv4" and not _is_valid_ipv4(value):
+                continue
+            return IOC(value=value, ioc_type=ioc_type, display_label=label)
+    return IOC(value=value, ioc_type="unknown", display_label="Unknown")
 
 
 def detect_bulk(raw_input: str) -> List[IOC]:

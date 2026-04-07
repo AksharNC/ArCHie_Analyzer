@@ -12,7 +12,7 @@ from apis.base import ThreatIntelClient
 
 _BASE   = "https://crt.sh"
 SOURCE  = "crt.sh"
-_client = ThreatIntelClient(timeout=20)
+_client = ThreatIntelClient(timeout=20, source=SOURCE)
 
 
 def analyze_domain(value: str, proxies: dict) -> dict:

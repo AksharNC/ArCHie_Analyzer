@@ -12,7 +12,7 @@ from apis.base import KeyPool, ThreatIntelClient
 
 _BASE   = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 SOURCE  = "NVD"
-_client = ThreatIntelClient(timeout=20)
+_client = ThreatIntelClient(timeout=20, source=SOURCE)
 _pool   = KeyPool("NVD_API_KEY")   # optional; loads NVD_API_KEY, NVD_API_KEY_2, _3 ...
 
 
@@ -72,7 +72,7 @@ def analyze_cve(value: str, proxies: dict) -> dict:
             if cvss_score >= 9.0:
                 verdict = "malicious"    # Critical
             elif cvss_score >= 7.0:
-                verdict = "malicious"    # High
+                verdict = "suspicious"   # High (requires auth / different conditions)
             elif cvss_score >= 4.0:
                 verdict = "suspicious"   # Medium
             else:

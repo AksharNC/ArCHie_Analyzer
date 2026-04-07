@@ -21,7 +21,6 @@ import sys
 import os
 import json
 import datetime
-import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from dotenv import load_dotenv
@@ -34,17 +33,16 @@ if sys.platform == "win32":
     if hasattr(sys.stderr, "buffer"):
         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-# Suppress InsecureRequestWarning (we intentionally use verify=False through proxy)
+# Suppress only the InsecureRequestWarning we intentionally trigger via proxy
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-warnings.filterwarnings("ignore")
 
 # Load .env from the project root
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 import proxy_manager
 import cache as ioc_cache
-from rate_limiter import rate_limiter
+from rate_limiter import rate_limiter, get_api_status, daily_tracker
 from detector import detect_single, detect_bulk, IOC
 from output.renderer import (
     console,
@@ -137,6 +135,97 @@ def _filter_dispatch(dispatch: dict, sources: list[str]) -> dict:
     }
 
 
+# ─── API Status Display ───────────────────────────────────────────────────────
+
+def _print_api_status() -> None:
+    """Print a table showing per-source API status, limits, and usage today."""
+    from rich.table import Table
+    from rich import box
+
+    rows = get_api_status()
+    today = datetime.date.today().strftime("%A, %d %b %Y")
+
+    console.print()
+    console.rule(f"[bold white] API STATUS — {today} [/bold white]", style="color(54)")
+    console.print()
+
+    tbl = Table(
+        box=box.ROUNDED,
+        border_style="color(54)",
+        header_style="bold white",
+        show_lines=True,
+        padding=(0, 1),
+    )
+    tbl.add_column("Source",         style="white",    min_width=16)
+    tbl.add_column("Status",         justify="center", min_width=11)
+    tbl.add_column("Daily Limit",    justify="right",  min_width=11)
+    tbl.add_column("ArCHie Calls",   justify="right",  min_width=12)
+    tbl.add_column("Est. Remaining", justify="right",  min_width=14)
+
+    for r in rows:
+        configured  = r["configured"]
+        calls_today = r["calls_today"]
+        daily_lim   = r["daily_limit"]
+        remaining   = r["remaining_today"]
+        exhausted   = r["exhausted"]
+
+        # ── Status column ──
+        if not configured:
+            status_str = "[dim]NO KEY[/dim]"
+        elif exhausted:
+            status_str = "[bold red]EXHAUSTED[/bold red]"
+        else:
+            status_str = "[green]OK[/green]"
+
+        # Daily limit
+        daily_str = f"{daily_lim:,}" if daily_lim is not None else "[dim]—[/dim]"
+
+        # Used today
+        if exhausted:
+            used_str = f"[bold red]{calls_today:,}[/bold red]"
+        elif daily_lim and calls_today >= daily_lim * 0.80:
+            used_str = f"[yellow]{calls_today:,}[/yellow]"
+        else:
+            used_str = f"{calls_today:,}" if calls_today > 0 else "[dim]0[/dim]"
+
+        # Remaining daily
+        if remaining is None:
+            rem_str = "[dim]—[/dim]"
+        elif remaining == 0:
+            rem_str = "[bold red]0[/bold red]"
+        elif daily_lim and remaining <= daily_lim * 0.20:
+            rem_str = f"[yellow]{remaining:,}[/yellow]"
+        else:
+            rem_str = f"[green]{remaining:,}[/green]"
+
+        tbl.add_row(
+            r["source"],
+            status_str,
+            daily_str,
+            used_str,
+            rem_str,
+        )
+
+    console.print(tbl)
+
+    # ── Legend ──
+    console.print(
+        "  [dim]"
+        "Status: [green]OK[/green] = key set  "
+        "[bold red]EXHAUSTED[/bold red] = daily quota hit  "
+        "[dim]NO KEY[/dim] = key missing in .env[/dim]"
+    )
+    console.print(
+        "  [dim]ArCHie Calls = calls made through this tool only "
+        "(external usage is not counted)[/dim]"
+    )
+    console.print(
+        "  [dim]Tip: run [white]python analyzer.py --mark-exhausted \"VirusTotal\"[/white] "
+        "to manually flag a source as exhausted until midnight.[/dim]"
+    )
+    console.print()
+
+
 # ─── Run Log ────────────────────────────────────────────────────────────────────────────────
 
 _run_log: dict = {"run_at": None, "iocs": [], "summary": {}}
@@ -160,8 +249,8 @@ def _log_ioc(ioc: IOC, results: list, verdict: str):
 
 def _handle_interrupt(log_mode: str | None, output_fmt: str | None) -> None:
     """
-    Clean Ctrl+C handler — suppress the traceback, show partial-results count,
-    and offer to save whatever was collected before the interrupt.
+    Clean Ctrl+C handler — suppress the traceback, auto-save partial results,
+    and exit immediately.
     """
     console.print("\n\n  [yellow]⚠  Scan interrupted (Ctrl+C).[/yellow]")
 
@@ -170,27 +259,14 @@ def _handle_interrupt(log_mode: str | None, output_fmt: str | None) -> None:
         console.print("  [dim]No results collected yet. Exiting.[/dim]\n")
         sys.exit(0)
 
-    console.print(f"  [dim]{completed} IOC(s) completed before interrupt.[/dim]\n")
-    console.print("  [bold white]Save partial results?[/bold white]")
-    console.print("  [cyan][1][/cyan]  Summary log  [dim](output/logs/json/ — verdict + key findings)[/dim]")
-    console.print("  [cyan][2][/cyan]  Raw dump log [dim](output/logs/json/ — full API responses)[/dim]")
-    console.print("  [cyan][3][/cyan]  CSV export   [dim](output/logs/csv/)[/dim]")
-    console.print("  [cyan][4][/cyan]  JSON export  [dim](output/logs/json/)[/dim]")
-    console.print("  [dim][0]  Exit without saving (default)[/dim]\n")
+    console.print(f"  [dim]{completed} IOC(s) completed before interrupt.[/dim]")
 
-    try:
-        choice = input("  Choice [0]: ").strip() or "0"
-    except (KeyboardInterrupt, EOFError):
-        choice = "0"
+    # Auto-save a summary log so partial work is never lost
+    _save_log("summary")
+    console.print("  [dim]Partial results saved to output/logs/json/.[/dim]")
 
-    if choice == "1":
-        _save_log("summary")
-    elif choice == "2":
-        _save_log("raw")
-    elif choice == "3":
-        _export_results("csv")
-    elif choice == "4":
-        _export_results("json")
+    if output_fmt:
+        _export_results(output_fmt)
 
     console.print("  [dim]Exiting ArCHie Analyzer.[/dim]\n")
     sys.exit(0)
@@ -259,8 +335,6 @@ def analyze_ioc(ioc: IOC, proxies: dict, dispatch: dict, workers: int = 5) -> li
     if ioc.ioc_type == "email":
         domain_ioc = detect_single(ioc.value.split("@")[1])
         return analyze_ioc(domain_ioc, proxies, dispatch, workers)
-
-    # Special case: filepath → local risk analysis only
     if ioc.ioc_type == "filepath":
         return [_analyze_filepath(ioc.value)]
 
@@ -295,7 +369,10 @@ def analyze_ioc(ioc: IOC, proxies: dict, dispatch: dict, workers: int = 5) -> li
             label = futures_map[future]
             try:
                 result = future.result()
-                ioc_cache.set(label, ioc.value, result)
+                # Don't cache transient errors or skipped results — they shouldn't
+                # permanently block a real lookup until the cache TTL expires.
+                if result.get("verdict") not in ("error", "skipped"):
+                    ioc_cache.set(label, ioc.value, result)
                 results.append(result)
             except Exception as e:
                 results.append({
@@ -329,21 +406,17 @@ def _analyze_filepath(path: str) -> dict:
     risky_path = any(p in path_lower for p in SUSPICIOUS_PATHS)
 
     if risky_ext and risky_path:
-        verdict = "malicious"
-        note    = f"High-risk extension ({ext}) in suspicious path"
+        note = f"High-risk extension ({ext}) in suspicious path"
     elif risky_ext:
-        verdict = "suspicious"
-        note    = f"High-risk extension: {ext}"
+        note = f"High-risk extension: {ext}"
     elif risky_path:
-        verdict = "suspicious"
-        note    = "Suspicious path location"
+        note = "Suspicious path location"
     else:
-        verdict = "clean"
-        note    = "No obvious risk indicators"
+        note = "No obvious risk indicators"
 
     return {
         "source":  "Local Analysis",
-        "verdict": verdict,
+        "verdict": "info",
         "data": {
             "extension":   ext or "none",
             "path_risk":   "High-risk path" if risky_path else "Normal path",
@@ -551,7 +624,7 @@ def _export_results(output_format: str) -> None:
                     data    = src.get("data", {})
                     finding = "  |  ".join(
                         str(v) for v in data.values()
-                        if v and str(v) != "—"
+                        if v is not None and str(v) != "—"
                     )[:120]
                     writer.writerow([
                         entry["value"],
@@ -672,7 +745,11 @@ def main():
             "  archie -i 1.2.3.4 -lr                        Full raw-dump log\n"
             "  archie -i 1.2.3.4 -ls                        Summary-only log\n"
             "  archie -i 1.2.3.4 -nc                        Bypass cache\n"
-            "  archie -f iocs.txt -w 10 -np                 10 workers, no proxy"
+            "  archie -f iocs.txt -w 10 -np                 10 workers, no proxy\n"
+            "  archie --api-status                          Show API key/usage dashboard\n"
+            "  archie --mark-exhausted \"VirusTotal\"          Flag VT quota as gone until midnight\n"
+            "  archie --clear-exhausted \"VirusTotal\"         Clear that flag\n"
+            "  archie --clear-exhausted all                 Clear all exhausted flags"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -691,6 +768,25 @@ def main():
         action="store_true",
         help="Print all available source names and exit.",
     )
+    parser.add_argument(
+        "--api-status",
+        action="store_true",
+        help="Show API key configuration, rate limits, and today's call counts, then exit.",
+    )
+    parser.add_argument(
+        "--mark-exhausted",
+        metavar="SOURCE",
+        help=(
+            'Manually mark a source as EXHAUSTED until midnight, e.g. "VirusTotal". '
+            "Use when you know the daily quota is gone from external usage. "
+            "Run --list-sources to see valid names."
+        ),
+    )
+    parser.add_argument(
+        "--clear-exhausted",
+        metavar="SOURCE",
+        help='Clear the EXHAUSTED flag for a source, e.g. "VirusTotal" (or "all" to clear all).',
+    )
     parser.add_argument("-np", "--no-proxy",  action="store_true",
                         help="Skip Java proxy (use direct connection)")
     parser.add_argument("-v", "--verbose",  action="store_true",
@@ -698,7 +794,7 @@ def main():
     parser.add_argument("-nc", "--no-cache", action="store_true",
                         help="Bypass result cache — always query APIs fresh")
     parser.add_argument("-w", "--workers",  type=int, default=5, metavar="N",
-                        help="Thread pool size for parallel API calls (default: 5)")
+                        help="Thread pool size for parallel API calls (default: 5, max: 20)")
     parser.add_argument("-o", "--output",   choices=["csv", "json"],
                         help="Export results to output/csv/ (csv) or output/logs/ (json)")
 
@@ -723,6 +819,52 @@ def main():
         for name in _ALL_SOURCES:
             console.print(f"    [cyan]•[/cyan]  {name}")
         console.print()
+        sys.exit(0)
+
+    # ── API status shortcut ──
+    if args.api_status:
+        print_banner()
+        _print_api_status()
+        sys.exit(0)
+
+    # ── Mark / clear exhausted ──
+    if args.mark_exhausted:
+        source = args.mark_exhausted.strip()
+        # Case-insensitive match against known sources
+        match = next((s for s in _ALL_SOURCES if s.lower() == source.lower()), None)
+        if not match:
+            print_banner()
+            console.print(
+                f"  [red]Unknown source: {source!r}. "
+                f"Run --list-sources to see valid names.[/red]"
+            )
+            sys.exit(1)
+        daily_tracker.mark_exhausted(match, "manual")
+        console.print(
+            f"  [green]✓[/green]  [bold white]{match}[/bold white] marked as "
+            f"[bold red]EXHAUSTED[/bold red] until midnight."
+        )
+        sys.exit(0)
+
+    if args.clear_exhausted:
+        target = args.clear_exhausted.strip()
+        if target.lower() == "all":
+            daily_tracker.clear_exhausted()
+            console.print("  [green]✓[/green]  Cleared EXHAUSTED flag for all sources.")
+        else:
+            match = next((s for s in _ALL_SOURCES if s.lower() == target.lower()), None)
+            if not match:
+                print_banner()
+                console.print(
+                    f"  [red]Unknown source: {target!r}. "
+                    f"Run --list-sources to see valid names.[/red]"
+                )
+                sys.exit(1)
+            daily_tracker.clear_exhausted(match)
+            console.print(
+                f"  [green]✓[/green]  Cleared EXHAUSTED flag for "
+                f"[bold white]{match}[/bold white]."
+            )
         sys.exit(0)
 
     # ── Cache setup ──
@@ -754,7 +896,7 @@ def main():
         console.print()
 
     dispatch = _build_dispatch()
-    workers  = max(1, args.workers)
+    workers  = max(1, min(args.workers, 20))
 
     # ── Source filter ──
     active_sources: list[str] = []

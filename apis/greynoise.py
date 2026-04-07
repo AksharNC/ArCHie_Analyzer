@@ -11,7 +11,7 @@ from apis.base import KeyPool, ThreatIntelClient
 
 _BASE   = "https://api.greynoise.io/v3/community"
 SOURCE  = "GreyNoise"
-_client = ThreatIntelClient(timeout=10)
+_client = ThreatIntelClient(timeout=10, source=SOURCE)
 _pool   = KeyPool("GREYNOISE_KEY")   # loads GREYNOISE_KEY, GREYNOISE_KEY_2, _3 ...
 
 
